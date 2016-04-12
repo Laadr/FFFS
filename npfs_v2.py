@@ -351,7 +351,7 @@ class GMM:
         predLabels = sp.argmin(scores,1)+1
         return predLabels,scores
 
-    def selection_cv(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, ncpus=None, tau=None, decisionMethod='linsyst'):
+    def selection_cv(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, ncpus=None, decisionMethod='linsyst'):
         '''
             Function that selects the most discriminative variables according to a given search method
             Inputs:
@@ -364,7 +364,6 @@ class GMM:
                 nfold: number of folds for the cross-validation. Default value: 5
                 balanced: If true, same proportion of each class in each fold. Default: True
                 ncpus: number of cpus to use for parallelization. Default: all
-                tau: regularization parameter. Default: None
                 decisionMethod: 'linsyst' to use least quare to compute decision, 'inv' to use matrix inv to compute decision or 'invUpdate' to use an update method of the inv. Default: 'linsyst'
 
             Outputs:
@@ -405,13 +404,13 @@ class GMM:
             del testSamples,testLabels,nk
 
         if direction == 'forward':
-            idx,criterionBestVal = self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, tau, decisionMethod)
+            idx,criterionBestVal = self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
         elif direction == 'backward':
-            idx,criterionBestVal = self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, tau, decisionMethod) ########## attention suppr balanced de selection
+            idx,criterionBestVal = self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
 
         return idx,criterionBestVal
 
-    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, tau, decisionMethod):
+    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
         """
             Function that selects the most discriminative variables according to a forward search
             Inputs:
@@ -423,7 +422,6 @@ class GMM:
                 kfold: k-folds for the cross-validation.
                 model_pre_cv: GMM models for each CV.
                 ncpus: number of cpus to use for parallelization.
-                tau: regularization parameter.
                 decisionMethod: 'linsyst' to use least quare to compute decision, 'inv' to use matrix inv to compute decision or 'invUpdate' to use an update method of the inv.
 
             Outputs:
@@ -448,7 +446,7 @@ class GMM:
             # Parallelize cv
             pool = mp.Pool(processes=ncpus)
             if criterion == 'accuracy':
-                processes =  [pool.apply_async(compute_acc_gmm, args=('forward',variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_acc_gmm, args=('forward',variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau=None,decisionMethod=decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx)) for k in xrange(len(kfold))] # ATTTENTION à l'ordre de sortie des var
             pool.close()
@@ -544,7 +542,7 @@ class GMM:
         ## Return the final value
         return idx,criterionBestVal
 
-    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, tau, decisionMethod):
+    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
         """
             Function that selects the most discriminative variables according to a backward search
             Inputs:
@@ -556,7 +554,6 @@ class GMM:
                 kfold: k-folds for the cross-validation.
                 model_pre_cv: GMM models for each CV.
                 ncpus: number of cpus to use for parallelization.
-                tau: regularization parameter.
                 decisionMethod: 'linsyst' to use least quare to compute decision, 'inv' to use matrix inv to compute decision or 'invUpdate' to use an update method of the inv.
             Outputs:
                 idx: the selected variables
@@ -578,7 +575,7 @@ class GMM:
             # Parallelize cv
             pool = mp.Pool(processes=ncpus)
             if criterion == 'accuracy':
-                processes =  [pool.apply_async(compute_acc_gmm, args=('backward',idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_acc_gmm, args=('backward',idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau=None,decisionMethod=decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 processes =  [pool.apply_async(compute_JM, args=('backward',idx,model_pre_cv[k],idx)) for k in xrange(len(kfold))]
             pool.close()
