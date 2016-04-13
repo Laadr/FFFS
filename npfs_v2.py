@@ -105,7 +105,7 @@ def compute_loocv_gmm(var,model,samples,labels,idx,K_u,alpha,beta,log_prop_u, ta
 
     return loocv_temp/n                                           # Compute loocv for variable
 
-def compute_acc_gmm(direction,variables, model_cv, samples, labels, idx, tau=None, decisionMethod='linsyst'):
+def compute_acc_gmm(direction, variables, model_cv, samples, labels, idx, tau=None, decisionMethod='linsyst'):
     """
         Function that computes the accuracy of the model_cv using the variables : idx + one of variables
         Inputs:
@@ -124,21 +124,22 @@ def compute_acc_gmm(direction,variables, model_cv, samples, labels, idx, tau=Non
     idx = sp.sort(idx)
 
     # Compute inv of covariance matrix
-    if decisionMethod == 'invUpdate':
+    if decisionMethod == 'inv':
         if len(idx)==0:
             invCov = None
+            logdet = None
         else:
-            invCov = sp.empty((model_cv.C,len(idx),len(idx)))
+            invCov     = sp.empty((model_cv.C,len(idx),len(idx)))
+            logdet     = sp.empty((model_cv.C))
 
             for c in xrange(model_cv.C):
-                if tau==None:
-                    invCov[c,:,:] = linalg.inv( model_cv.cov[c,idx,:][:,idx] )
-                else:
-                    invCov[c,:,:] = sp.dot( linalg.inv( sp.dot(model_cv.cov[c,idx,:][:,idx], model_cv.cov[c,idx,:][:,idx]) + tau * sp.ones(len(idx)) ) , model_cv.cov[c,idx,:][:,idx])
+                vp,Q,rcond    = model_cv.decomposition(model_cv.cov[c,idx,:][:,idx],tau)
+                invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
+                logdet[c]     = sp.sum(sp.log(vp))
 
     for i,var in enumerate(variables):
-        if decisionMethod=='invUpdate':
-            predLabels = model_cv.predict_gmm_inv(direction,samples,invCov,(i,var),featIdx=idx,tau=tau)[0]
+        if decisionMethod=='inv':
+            predLabels = model_cv.predict_gmm_maj(direction,samples,invCov,logdet,(i,var),featIdx=idx,tau=tau)[0]
         else:
             if direction=='forward':
                 id_t = list(idx)
@@ -147,7 +148,7 @@ def compute_acc_gmm(direction,variables, model_cv, samples, labels, idx, tau=Non
             elif direction=='backward':
                 mask    = sp.ones(len(variables), dtype=bool)
                 mask[i] = False
-                id_t     = list(idx[mask])
+                id_t    = list(idx[mask])
             predLabels = model_cv.predict_gmm(samples,featIdx=id_t,tau=tau,decisionMethod=decisionMethod)[0] # Use the marginalization properties to update the model for each tuple of variables
             del id_t
         eq = sp.where(labels.ravel()==predLabels.ravel())[0]
@@ -190,7 +191,7 @@ def compute_JM(variables, model, idx):
 
 ## Gaussian Mixture Model
 
-class GMM:
+class GMM(object):
 
     def __init__(self, d=0, C=0):
         self.nbSpl   = sp.empty((C,1)) # array of number of samples in each class
@@ -199,6 +200,24 @@ class GMM:
         self.cov     = sp.empty((C,d,d)) # array of covariance matrices
         self.C       = C            # number of class
         self.d       = d            # number of features
+
+    def decomposition(self, cov, tau=None):
+        # Decomposition
+        vp,Q = linalg.eigh(cov)
+
+        # Compute conditioning
+        eps = sp.finfo(sp.float64).eps
+        if vp.max()<eps:
+            rcond = 0
+        else:
+            rcond = vp.min()/vp.max()
+
+        if tau == None:
+            vp = sp.where(vp<eps,eps,vp)
+        else:
+            vp += tau
+
+        return vp,Q,rcond
 
     def learn_gmm(self, samples, labels):
         """
@@ -253,19 +272,14 @@ class GMM:
         # Start the prediction for each class
         for c in xrange(self.C):
             testSamples_c = testSamples[:,featIdx] - self.mean[c,featIdx]
-            logdet,rcond  = safe_logdet(self.cov[c,featIdx,:][:,featIdx])
+            vp,Q,rcond    = self.decomposition(self.cov[c,featIdx,:][:,featIdx],tau)
+            logdet        = sp.sum(sp.log(vp))
             cst           = logdet - 2*sp.log(self.prop[c]) # Pre compute the constant term
 
-            if tau==None:
-                if decisionMethod=='inv':
-                    temp = sp.dot(linalg.inv(self.cov[c,featIdx,:][:,featIdx]), testSamples_c.T).T
-                else:
-                    temp = mylstsq(self.cov[c,featIdx,:][:,featIdx],testSamples_c.T,rcond).T
+            if decisionMethod=='inv':
+                temp = sp.dot( np.dot(Q,((1/vp)*Q).T) , testSamples_c.T).T
             else:
-                if decisionMethod=='inv':
-                    temp = sp.dot( linalg.inv( sp.dot(self.cov[c,featIdx,:][:,featIdx], self.cov[c,featIdx,:][:,featIdx]) + tau * sp.ones(len(featIdx)) ), sp.dot(self.cov[c,featIdx,:][:,featIdx],testSamples_c.T) ).T
-                else:
-                    temp = linalg.lstsq( sp.dot(self.cov[c,featIdx,:][:,featIdx], self.cov[c,featIdx,:][:,featIdx]) + tau * sp.ones(len(featIdx)) , sp.dot(self.cov[c,featIdx,:][:,featIdx],testSamples_c.T))[0].T
+                temp = mylstsq(self.cov[c,featIdx,:][:,featIdx],testSamples_c.T,rcond).T
 
             scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst
 
@@ -281,7 +295,7 @@ class GMMFeaturesSelection(GMM):
     def __init__(self, d=0, C=0):
         super(GMMFeaturesSelection, self).__init__(d,C)
 
-    def predict_gmm_inv(self, direction, testSamples, invCov, newFeat, featIdx=None, tau=None):
+    def predict_gmm_maj(self, direction, testSamples, invCov, logdet, newFeat, featIdx=None, tau=None):
         """
             Function that predict the label for testSamples using the learned model (with an update method of the inverte covariance matrix)
             Inputs:
@@ -307,6 +321,8 @@ class GMMFeaturesSelection(GMM):
 
         # New set of features
         if direction=='forward':
+            featIdx  = list(featIdx)
+            featIdx.sort()
             id_t = list(featIdx)
             id_t.append(newFeat[1])
             id_t.sort()
@@ -323,29 +339,32 @@ class GMMFeaturesSelection(GMM):
         # Start the prediction for each class
         for c in xrange(self.C):
             testSamples_c = testSamples[:,id_t] - self.mean[c,id_t]
-            if direction=='forward':
-                logdet,rcond  = safe_logdet(self.cov[c,id_t,:][:,id_t])
-            elif direction=='backward':
-                logdet,rcond  = safe_logdet(self.cov[c,id_del,:][:,id_del])
-            cst           = logdet - 2*sp.log(self.prop[c]) # Pre compute the constant term
 
-            if invCov==None:
+            if logdet==None and invCov==None:
+                logdet_maj = sp.sum(sp.log(self.cov[c,newFeat[1],newFeat[1]] + tau))
+
                 tmp = float(self.cov[c,id_t,id_t])
                 temp = sp.dot([[tmp/(tmp**2 + tau)]], testSamples_c.T).T
-                scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst
+                scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + logdet_maj - 2*sp.log(self.prop[c])
             else:
-                # Additional terme for new feature
                 if direction=='forward':
-                    d_feat        = self.cov[c,newFeat[1],newFeat[1]] + tau - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
+                    d_feat     = self.cov[c,newFeat[1],newFeat[1]] + tau - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
+                    logdet_maj = sp.log(d_feat) + logdet[c]
+
                     ind           = id_t.index(newFeat[1])
                     row_feat      = -1/float(d_feat) * sp.dot(self.cov[c,:,newFeat[1]][featIdx],invCov[c,:,:][:,:])
                     row_feat      = sp.insert( row_feat, ind, 1/float(d_feat) )
                     cst_feat      = d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
                     testSamples_c = testSamples[:,featIdx] - self.mean[c,featIdx]
+
                 elif direction=='backward':
                     d_feat     = 1/float( invCov[c,newFeat[0],newFeat[0]] )
+                    logdet_maj = sp.log(d_feat) - logdet[c]
+
                     row_feat   = invCov[c,newFeat[0],:]
                     cst_feat   = - d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
+
+                cst = logdet_maj - 2*sp.log(self.prop[c]) # Pre compute the constant term
 
                 temp = sp.dot(invCov[c,:,:][:,:], testSamples_c.T).T
 
@@ -357,7 +376,7 @@ class GMMFeaturesSelection(GMM):
         predLabels = sp.argmin(scores,1)+1
         return predLabels,scores
 
-    def selection_cv(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, ncpus=None, decisionMethod='linsyst'):
+    def selection_cv(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, tau=None, ncpus=None, decisionMethod='linsyst'):
         '''
             Function that selects the most discriminative variables according to a given search method
             Inputs:
@@ -386,7 +405,7 @@ class GMMFeaturesSelection(GMM):
             kfold = cv.KFold(n,n_folds=nfold,shuffle=True) # kfold is an iterator
 
         ## Pre-update the models
-        model_pre_cv = [GMM(d=self.d, C=self.C) for i in xrange(len(kfold))]
+        model_pre_cv = [GMMFeaturesSelection(d=self.d, C=self.C) for i in xrange(len(kfold))]
         for k, (trainInd,testInd) in enumerate(kfold):
             # Get training data for this cv round
             testSamples,testLabels = samples[testInd,:], labels[testInd]
@@ -410,13 +429,13 @@ class GMMFeaturesSelection(GMM):
             del testSamples,testLabels,nk
 
         if direction == 'forward':
-            idx,criterionBestVal = self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
+            idx,criterionBestVal = self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod)
         elif direction == 'backward':
-            idx,criterionBestVal = self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
+            idx,criterionBestVal = self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod)
 
         return idx,criterionBestVal
 
-    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
+    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod):
         """
             Function that selects the most discriminative variables according to a forward search
             Inputs:
@@ -452,7 +471,7 @@ class GMMFeaturesSelection(GMM):
             # Parallelize cv
             pool = mp.Pool(processes=ncpus)
             if criterion == 'accuracy':
-                processes =  [pool.apply_async(compute_acc_gmm, args=('forward',variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau=None,decisionMethod=decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_acc_gmm, args=('forward',variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx)) for k in xrange(len(kfold))] # ATTTENTION à l'ordre de sortie des var
             pool.close()
@@ -479,6 +498,67 @@ class GMMFeaturesSelection(GMM):
                 idx.append(variables[bestVar])
                 variables=sp.delete(variables,bestVar)
             nbSelectFeat += 1
+
+        ## Return the final value
+        return idx,criterionBestVal
+
+    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod):
+        """
+            Function that selects the most discriminative variables according to a backward search
+            Inputs:
+                samples, labels:  the training samples and their labels
+                criterion: the criterion function to use for selection (accuracy or JM).
+                stopMethod: the stopping criterion. It can be either 'maxVar' to continue until maxvar % of the variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
+                delta :  the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
+                maxvar: maximum number of extracted variables.
+                kfold: k-folds for the cross-validation.
+                model_pre_cv: GMM models for each CV.
+                ncpus: number of cpus to use for parallelization.
+                decisionMethod: 'linsyst' to use least quare to compute decision, 'inv' to use matrix inv to compute decision or 'invUpdate' to use an update method of the inv.
+            Outputs:
+                idx: the selected variables
+                criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
+        """
+        # Get some information from the variables
+        n = samples.shape[0]      # Number of samples
+        if ncpus is None:
+            ncpus=mp.cpu_count() # Get the number of core
+
+        # Initialization
+        idx              = sp.arange(self.d)       # and no selected variable
+        criterionBestVal = []                      # list of the evolution the OA estimation
+        maxvar           = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
+
+        # Start the forward search
+        while(idx.size>maxvar):
+
+            # Parallelize cv
+            pool = mp.Pool(processes=ncpus)
+            if criterion == 'accuracy':
+                processes =  [pool.apply_async(compute_acc_gmm, args=('backward',idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+            elif criterion == 'JM':
+                processes =  [pool.apply_async(compute_JM, args=('backward',idx,model_pre_cv[k],idx)) for k in xrange(len(kfold))]
+            pool.close()
+            pool.join()
+
+            # Compute mean criterion value over each processus
+            criterionVal = sp.zeros(idx.size)
+            for p in processes:
+                criterionVal += p.get()
+            criterionVal /= len(kfold)
+            del processes,pool
+
+            # Select the variable that provides the highest loocv
+            worstVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
+            criterionBestVal.append(criterionVal[worstVar])    # save criterion value
+
+            if (stopMethod=='variation') and (((criterionBestVal[-2]-criterionBestVal[-1])/criterionBestVal[-2]*100) < delta):
+                criterionBestVal.pop()
+                break
+            else:
+                mask           = sp.ones(len(idx), dtype=bool)
+                mask[worstVar] = False
+                idx            = idx[mask]                    # delete the selected variable of the pool
 
         ## Return the final value
         return idx,criterionBestVal
@@ -544,67 +624,6 @@ class GMMFeaturesSelection(GMM):
                 idx.append(variables[bestVar])
                 variables=sp.delete(variables,bestVar)
             nbSelectFeat += 1
-
-        ## Return the final value
-        return idx,criterionBestVal
-
-    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
-        """
-            Function that selects the most discriminative variables according to a backward search
-            Inputs:
-                samples, labels:  the training samples and their labels
-                criterion: the criterion function to use for selection (accuracy or JM).
-                stopMethod: the stopping criterion. It can be either 'maxVar' to continue until maxvar % of the variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
-                delta :  the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
-                maxvar: maximum number of extracted variables.
-                kfold: k-folds for the cross-validation.
-                model_pre_cv: GMM models for each CV.
-                ncpus: number of cpus to use for parallelization.
-                decisionMethod: 'linsyst' to use least quare to compute decision, 'inv' to use matrix inv to compute decision or 'invUpdate' to use an update method of the inv.
-            Outputs:
-                idx: the selected variables
-                criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
-        """
-        # Get some information from the variables
-        n = samples.shape[0]      # Number of samples
-        if ncpus is None:
-            ncpus=mp.cpu_count() # Get the number of core
-
-        # Initialization
-        idx              = sp.arange(self.d)       # and no selected variable
-        criterionBestVal = []                      # list of the evolution the OA estimation
-        maxvar           = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
-
-        # Start the forward search
-        while(idx.size>maxvar):
-
-            # Parallelize cv
-            pool = mp.Pool(processes=ncpus)
-            if criterion == 'accuracy':
-                processes =  [pool.apply_async(compute_acc_gmm, args=('backward',idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau=None,decisionMethod=decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
-            elif criterion == 'JM':
-                processes =  [pool.apply_async(compute_JM, args=('backward',idx,model_pre_cv[k],idx)) for k in xrange(len(kfold))]
-            pool.close()
-            pool.join()
-
-            # Compute mean criterion value over each processus
-            criterionVal = sp.zeros(idx.size)
-            for p in processes:
-                criterionVal += p.get()
-            criterionVal /= len(kfold)
-            del processes,pool
-
-            # Select the variable that provides the highest loocv
-            worstVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
-            criterionBestVal.append(criterionVal[worstVar])    # save criterion value
-
-            if (stopMethod=='variation') and (((criterionBestVal[-2]-criterionBestVal[-1])/criterionBestVal[-2]*100) < delta):
-                criterionBestVal.pop()
-                break
-            else:
-                mask           = sp.ones(len(idx), dtype=bool)
-                mask[worstVar] = False
-                idx            = idx[mask]                    # delete the selected variable of the pool
 
         ## Return the final value
         return idx,criterionBestVal
