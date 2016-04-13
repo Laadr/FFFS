@@ -188,8 +188,8 @@ def compute_JM(variables, model, idx):
 
     return JM
 
-
 ## Gaussian Mixture Model
+
 class GMM:
 
     def __init__(self, d=0, C=0):
@@ -202,10 +202,10 @@ class GMM:
 
     def learn_gmm(self, samples, labels):
         """
-        Method that learns the GMM from training samples and store the mean, covariance and proportion of each class in class members.
-        Input:
-            samples: the training samples
-            labels:  the labels
+            Method that learns the GMM from training samples and store the mean, covariance and proportion of each class in class members.
+            Input:
+                samples: the training samples
+                labels:  the labels
         """
         # Get information from the data
         self.C = int(labels.max(0)) # Number of classes
@@ -274,6 +274,12 @@ class GMM:
         # Assign the label to the minimum value of scores
         predLabels = sp.argmin(scores,1)+1
         return predLabels,scores
+
+
+class GMMFeaturesSelection(GMM):
+
+    def __init__(self, d=0, C=0):
+        super(GMMFeaturesSelection, self).__init__(d,C)
 
     def predict_gmm_inv(self, direction, testSamples, invCov, newFeat, featIdx=None, tau=None):
         """
