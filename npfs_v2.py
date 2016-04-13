@@ -189,6 +189,40 @@ def compute_JM(variables, model, idx):
 
     return JM
 
+## Confusion matrix
+
+class ConfusionMatrix(object):
+    def __init__(self):
+        self.confusion_matrix = None
+        self.OA               = None
+        self.Kappa            = None
+        self.F1Mean           = None
+
+    def compute_confusion_matrix(self,yp,yr):
+        '''
+        Compute the confusion matrix
+        '''
+        # Initialization
+        n = yp.size
+        C = int(yr.max())
+        self.confusion_matrix = sp.zeros((C,C))
+
+        # Compute confusion matrix
+        for i in xrange(n):
+            self.confusion_matrix[yp[i].astype(int)-1, yr[i].astype(int)-1] += 1
+
+        # Compute overall accuracy
+        self.OA = sp.sum(sp.diag(self.confusion_matrix))/n
+
+        # Compute Kappa
+        nl = sp.sum(self.confusion_matrix,axis=1)
+        nc = sp.sum(self.confusion_matrix,axis=0)
+
+        self.Kappa = ((n**2)*self.OA - sp.sum(nc*nl))/(n**2-sp.sum(nc*nl))
+
+        # Compute F1 Mean
+        self.F1Mean = sp.sum(2*sp.diag(self.confusion_matrix) / (nl + nc))/n
+
 ## Gaussian Mixture Model
 
 class GMM(object):
