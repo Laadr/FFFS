@@ -105,7 +105,7 @@ def compute_loocv_gmm(var,model,samples,labels,idx,K_u,alpha,beta,log_prop_u, ta
 
     return loocv_temp/n                                           # Compute loocv for variable
 
-def compute_acc_gmm(direction, variables, model_cv, samples, labels, idx, tau=None, decisionMethod='linsyst'):
+def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx, tau=None, decisionMethod='linsyst'):
     """
         Function that computes the accuracy of the model_cv using the variables : idx + one of variables
         Inputs:
@@ -116,12 +116,13 @@ def compute_acc_gmm(direction, variables, model_cv, samples, labels, idx, tau=No
             idx:            the pool of retained variables
             tau:         regularization parameter
         Output:
-            acc: the estimated accuracies
+            metric: the estimated metric
 
         Used in GMM.forward_selection()
     """
-    acc = sp.zeros(variables.size)
-    idx = sp.sort(idx)
+    metric     = sp.zeros(variables.size)
+    confMatrix = ConfusionMatrix()
+    idx        = sp.sort(idx)
 
     # Compute inv of covariance matrix
     if decisionMethod == 'inv':
@@ -151,10 +152,16 @@ def compute_acc_gmm(direction, variables, model_cv, samples, labels, idx, tau=No
                 id_t    = list(idx[mask])
             predLabels = model_cv.predict_gmm(samples,featIdx=id_t,tau=tau,decisionMethod=decisionMethod)[0] # Use the marginalization properties to update the model for each tuple of variables
             del id_t
-        eq = sp.where(labels.ravel()==predLabels.ravel())[0]
-        acc[i] = float(eq.size)/labels.size
 
-    return acc
+        confMatrix.compute_confusion_matrix(predLabels,labels)
+        if criterion=='accuracy':
+            metric[i] = confMatrix.OA
+        elif criterion=='F1Mean':
+            metric[i] = confMatrix.F1Mean
+        elif criterion=='kappa':
+            metric[i] = confMatrix.Kappa
+
+    return metric
 
 def compute_JM(variables, model, idx):
     """
@@ -504,8 +511,8 @@ class GMMFeaturesSelection(GMM):
 
             # Parallelize cv
             pool = mp.Pool(processes=ncpus)
-            if criterion == 'accuracy':
-                processes =  [pool.apply_async(compute_acc_gmm, args=('forward',variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+            if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx)) for k in xrange(len(kfold))] # ATTTENTION à l'ordre de sortie des var
             pool.close()
@@ -568,8 +575,8 @@ class GMMFeaturesSelection(GMM):
 
             # Parallelize cv
             pool = mp.Pool(processes=ncpus)
-            if criterion == 'accuracy':
-                processes =  [pool.apply_async(compute_acc_gmm, args=('backward',idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+            if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
+                processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 processes =  [pool.apply_async(compute_JM, args=('backward',idx,model_pre_cv[k],idx)) for k in xrange(len(kfold))]
             pool.close()

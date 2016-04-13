@@ -26,7 +26,7 @@ print "Accuracy without selection: ", float(t.size)/y.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('forward',x, y,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=0.2,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection_cv('forward',x, y,criterion='F1Mean', stopMethod='maxVar', delta=1.5, maxvar=0.2,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 idx.sort()
 yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
@@ -40,7 +40,7 @@ print "Pertinent features (by construction): ", var
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('backward',x, y,criterion='accuracy', stopMethod='maxVar',delta=1.5, maxvar=0.2,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection_cv('backward',x, y,criterion='F1Mean', stopMethod='maxVar',delta=1.5, maxvar=0.2,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 # idx,selectionOA = model.backward_selection(x, y,criterion='accuracy',delta=1.5, maxvar=0.1,nfold=5,balanced=False,tau=None,decisionMethod='invUpdate')
 idx.sort()
 yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
