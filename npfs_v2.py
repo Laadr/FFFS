@@ -110,15 +110,17 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
         Function that computes the accuracy of the model_cv using the variables : idx + one of variables
         Inputs:
             direction:      'backward' or 'forward'
+            criterion:      criterion function use to discriminate variables
             variables:      the variable to add or delete to idx
             model_cv:       the model build with all the variables
             samples,labels: the samples/label for testing
             idx:            the pool of retained variables
-            tau:         regularization parameter
+            tau:            regularization parameter
+            decisionMethod: method to compute main term of decision function 'linsyst' or 'inv'. Default: 'linsyst'
         Output:
             metric: the estimated metric
 
-        Used in GMM.forward_selection()
+        Used in GMM.forward_selection(), GMM.backward_selection()
     """
     metric     = sp.zeros(variables.size)
     confMatrix = ConfusionMatrix()
@@ -206,9 +208,12 @@ class ConfusionMatrix(object):
         self.F1Mean           = None
 
     def compute_confusion_matrix(self,yp,yr):
-        '''
-        Compute the confusion matrix
-        '''
+        """
+            Compute the confusion matrix
+            Inputs:
+                yp: predicted labels
+                yr: reference labels
+        """
         # Initialization
         n = yp.size
         C = int(yr.max())
@@ -242,9 +247,19 @@ class GMM(object):
         self.C       = C            # number of class
         self.d       = d            # number of features
 
-    def decomposition(self, cov, tau=None):
+    def decomposition(self, M, tau=None):
+        """
+            Compute the decompostion of symmetric matrix
+            Inputs:
+                M:   matrix to decompose
+                tau: regularisation term added to eigenvalues
+            Outputs:
+                vp:    eigenvalues
+                Q:     eigenvectors
+                rcond: conditioning
+        """
         # Decomposition
-        vp,Q = linalg.eigh(cov)
+        vp,Q = linalg.eigh(M)
 
         # Compute conditioning
         eps = sp.finfo(sp.float64).eps
@@ -418,24 +433,25 @@ class GMMFeaturesSelection(GMM):
         return predLabels,scores
 
     def selection_cv(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, tau=None, ncpus=None, decisionMethod='linsyst'):
-        '''
+        """
             Function that selects the most discriminative variables according to a given search method
             Inputs:
-                direction: 'backward' or 'forward'
-                samples, labels:  the training samples and their labels
-                criterion: the criterion function to use for selection (accuracy or JM).  Default: 'accuracy'
-                stopMethod: the stopping criterion. It can be either 'maxVar' to continue until maxvar % of the variables are selected or either 'variation' to continue until variation of criterion function are less than delta. Default: 'maxVar'
-                delta :  the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta. Default value 0.1%
-                maxvar: maximum number of extracted variables. Default value: 20% of the original number
-                nfold: number of folds for the cross-validation. Default value: 5
-                balanced: If true, same proportion of each class in each fold. Default: True
-                ncpus: number of cpus to use for parallelization. Default: all
-                decisionMethod: 'linsyst' to use least quare to compute decision, 'inv' to use matrix inv to compute decision or 'invUpdate' to use an update method of the inv. Default: 'linsyst'
+                direction:       'backward' or 'forward'
+                samples, labels: the training samples and their labels
+                criterion:       the criterion function to use for selection (accuracy, kappa, F1Mean, JM).  Default: 'accuracy'
+                stopMethod:      the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta. Default: 'maxVar'
+                delta :          the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta. Default value 0.1%
+                maxvar:          maximum number of extracted variables. Default value: 20% of the original number
+                nfold:           number of folds for the cross-validation. Default value: 5
+                balanced:        If true, same proportion of each class in each fold. Default: True
+                tau:             regularization term added to eigenvalues. Default: None
+                ncpus:           number of cpus to use for parallelization. Default: all
+                decisionMethod:  'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
 
             Outputs:
-                idx: the selected variables
+                idx:              the selected variables
                 criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
-        '''
+        """
         # Get some information from the variables
         n = samples.shape[0]      # Number of samples
 
@@ -480,18 +496,19 @@ class GMMFeaturesSelection(GMM):
         """
             Function that selects the most discriminative variables according to a forward search
             Inputs:
-                samples, labels:  the training samples and their labels
-                criterion: the criterion function to use for selection (accuracy or JM).
-                stopMethod: the stopping criterion. It can be either 'maxVar' to continue until maxvar % of the variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
-                delta :  the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
-                maxvar: maximum number of extracted variables.
-                kfold: k-folds for the cross-validation.
-                model_pre_cv: GMM models for each CV.
-                ncpus: number of cpus to use for parallelization.
-                decisionMethod: 'linsyst' to use least quare to compute decision, 'inv' to use matrix inv to compute decision or 'invUpdate' to use an update method of the inv.
+                samples, labels: the training samples and their labels
+                criterion:       the criterion function to use for selection (accuracy, kappa, F1Mean, JM).
+                stopMethod:      the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
+                delta:           the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
+                maxvar:          maximum number of extracted variables.
+                kfold:           k-folds for the cross-validation.
+                model_pre_cv:    GMM models for each CV.
+                tau:             regularization term added to eigenvalues. Default: None
+                ncpus:           number of cpus to use for parallelization.
+                decisionMethod:  'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
 
             Outputs:
-                idx: the selected variables
+                idx:              the selected variables
                 criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
         """
         # Get some information from the variables
@@ -504,7 +521,8 @@ class GMMFeaturesSelection(GMM):
         variables        = sp.arange(self.d)       # At step zero: d variables available
         idx              = []                      # and no selected variable
         criterionBestVal = []                      # list of the evolution the OA estimation
-        maxvar           = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
+        if maxvar==0.2:
+            maxvar = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
 
         # Start the forward search
         while(nbSelectFeat<maxvar) and (variables.size!=0):
@@ -548,16 +566,17 @@ class GMMFeaturesSelection(GMM):
             Function that selects the most discriminative variables according to a backward search
             Inputs:
                 samples, labels:  the training samples and their labels
-                criterion: the criterion function to use for selection (accuracy or JM).
-                stopMethod: the stopping criterion. It can be either 'maxVar' to continue until maxvar % of the variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
-                delta :  the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
-                maxvar: maximum number of extracted variables.
-                kfold: k-folds for the cross-validation.
-                model_pre_cv: GMM models for each CV.
-                ncpus: number of cpus to use for parallelization.
-                decisionMethod: 'linsyst' to use least quare to compute decision, 'inv' to use matrix inv to compute decision or 'invUpdate' to use an update method of the inv.
+                criterion:        the criterion function to use for selection (accuracy or JM).
+                stopMethod:       the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
+                delta :           the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
+                maxvar:           maximum number of extracted variables.
+                kfold:            k-folds for the cross-validation.
+                model_pre_cv:     GMM models for each CV.
+                tau:              regularization term added to eigenvalues. Default: None
+                ncpus:            number of cpus to use for parallelization.
+                decisionMethod:   'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
             Outputs:
-                idx: the selected variables
+                idx:              the selected variables
                 criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
         """
         # Get some information from the variables
@@ -568,7 +587,8 @@ class GMMFeaturesSelection(GMM):
         # Initialization
         idx              = sp.arange(self.d)       # and no selected variable
         criterionBestVal = []                      # list of the evolution the OA estimation
-        maxvar           = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
+        if maxvar==0.2:
+            maxvar = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
 
         # Start the forward search
         while(idx.size>maxvar):
