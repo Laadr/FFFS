@@ -768,6 +768,88 @@ class GMMFeaturesSelection(GMM):
         ## Return the final value
         return idx,criterionBestVal
 
+    def floating_forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod):
+        """
+            Function that selects the most discriminative variables according to a floating forward search
+            Inputs:
+                samples, labels:  the training samples and their labels
+                criterion:        the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).
+                stopMethod:       the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
+                delta :           the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
+                maxvar:           maximum number of extracted variables.
+                kfold:            k-folds for the cross-validation.
+                model_pre_cv:     GMM models for each CV.
+                tau:              regularization term added to eigenvalues. Default: None
+                ncpus:            number of cpus to use for parallelization.
+                decisionMethod:   'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
+            Outputs:
+                idx:              the selected variables
+                criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
+        """
+        # Get some information from the variables
+        n = samples.shape[0]      # Number of samples
+        if ncpus is None:
+            ncpus=mp.cpu_count() # Get the number of core
+
+        # Initialization
+        nbSelectFeat     = 0                       # Initialization of the counter
+        variables        = sp.arange(self.d)       # At step zero: d variables available
+        idx              = []                      # and no selected variable
+        criterionBestVal = []                      # list of the evolution the OA estimation
+        idxBestSets      = []
+
+        if maxvar==0.2:
+            maxvar = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
+
+        # Start the forward search
+        while(nbSelectFeat<maxvar) and (variables.size!=0):
+
+            # Parallelize cv
+            pool = mp.Pool(processes=ncpus)
+            if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+            elif criterion == 'JM':
+                processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
+            elif criterion == 'divKL':
+                processes =  [pool.apply_async(compute_divKL, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
+            pool.close()
+            pool.join()
+
+            # Compute mean criterion value over each processus
+            criterionVal = sp.zeros(variables.size)
+            for p in processes:
+                criterionVal += p.get()
+            criterionVal /= len(kfold)
+            del processes,pool
+
+            # Select the variable that provides the highest loocv
+            bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
+            if criterionVal[bestVar] < criterionBestVal[len(idx)]:
+                idx = idxBestSets[len(idx)]
+            else:
+
+            if len(idx) + 1 > criterionBestVal:
+                idx.append(variables[bestVar])
+                criterionBestVal.append(criterionVal[bestVar])   # save criterion value
+                idxBestSets.append(idx)
+            else:
+                criterionBestVal[len(idx)] = criterionVal[bestVar]   # save criterion value
+                idxBestSets[len(idx)] = idx
+
+                flagBacktrack = True
+
+
+            if nbSelectFeat>0 and (stopMethod=='variation') and (((criterionBestVal[nbSelectFeat]-criterionBestVal[nbSelectFeat-1])/criterionBestVal[nbSelectFeat-1]*100) < delta):
+                criterionBestVal.pop()
+                break
+            else:
+                idx.append(variables[bestVar])           # add the selected variables to the pool
+                variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
+            nbSelectFeat += 1
+
+        ## Return the final value
+        return idx,criterionBestVal
+
     # def forward_selection_loo(self, samples, labels, stopMethod='maxVar', delta=0.1, maxvar=0.2, ncpus=None, tau=None):
     #     """
     #         Function that selects the most discriminative variables according to a forward search using Leave-One-Out method
