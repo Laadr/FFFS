@@ -165,36 +165,118 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
 
     return metric
 
-def compute_JM(variables, model, idx):
+def compute_JM(direction, variables, model, idx, tau=None):
     """
         Function that computes the Jeffries–Matusita distance of the model_cv using the variables : idx + one of variables
         Inputs:
-            variables:      the variable to add to idx
-            model_cv:       the model build with all the variables
-            idx:            the pool of retained variables
+            variables: the variable to add to idx
+            model_cv:  the model build with all the variables
+            idx:       the pool of retained variables
         Output:
             JM: the estimated Jeffries–Matusita distance
 
         Used in GMM.forward_selection()
     """
+    # # Initialization
+    # JM = sp.zeros(variables.size)
+
+    # # For all variables
+    # for k,var in enumerate(variables):
+    #     id_t = list(idx)
+    #     id_t.append(var)
+    #     id_t.sort()
+
+    #     for i in xrange(model.C):
+    #         for j in xrange(i+1,model.C):
+    #             md  = (model.mean[i,id_t]-model.mean[j,id_t])
+    #             cs  = (model.cov[i,id_t,:][:,id_t]+model.cov[j,id_t,:][:,id_t])/2
+    #             di  = linalg.det(model.cov[i,id_t,:][:,id_t])
+    #             dj  = linalg.det(model.cov[j,id_t,:][:,id_t])
+    #             dij = linalg.det(cs)
+    #             bij = sp.dot(md,linalg.solve(cs,md))/8 + 0.5*sp.log(0.5*dij/sp.sqrt(di*dj))
+    #             JM[k] += sp.sqrt(2*(1-sp.exp(-bij)))*model.prop[i]*model.prop[j]
+
     # Initialization
     JM = sp.zeros(variables.size)
+    d  = sp.zeros((model.C,variables.size))
 
-    # For all variables
-    for k,var in enumerate(variables):
-        id_t = list(idx)
-        id_t.append(var)
-        id_t.sort()
+    # Cast and sort index of selected variables
+    idx = list(idx)
+    idx.sort()
 
+
+    if tau==None:
+        tau=0
+
+    # Compute all possible update of det cov(idx)
+    if len(idx)==0:
+        for c in xrange(model.C):
+            for k,var in enumerate(variables):
+                d[c,k] = model.cov[c,var,var]
+    else:
+        for c in xrange(model.C):
+            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx],tau)
+            det = sp.prod(vp)
+            invCov = sp.dot(Q,((1/vp)*Q).T)
+            for k,var in enumerate(variables):
+                if direction=='forward':
+                    maj_cst = model.cov[c,var,var] + tau - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov,model.cov[c,var,:][idx].T) )
+                elif direction=='backward':
+                    maj_cst     = 1/float( invCov[k,k] )
+                d[c,k]  = maj_cst * det
+        del vp,Q,rcond,maj_cst,invCov
+
+    if len(idx)==0:
         for i in xrange(model.C):
             for j in xrange(i+1,model.C):
-                md  = (model.mean[i,id_t]-model.mean[j,id_t])
-                cs  = (model.cov[i,id_t,:][:,id_t]+model.cov[j,id_t,:][:,id_t])/2
-                di  = linalg.det(model.cov[i,id_t,:][:,id_t])
-                dj  = linalg.det(model.cov[j,id_t,:][:,id_t])
-                dij = linalg.det(cs)
-                bij = sp.dot(md,linalg.solve(cs,md))/8 + 0.5*sp.log(dij/sp.sqrt(di*dj))
-                JM[k]  += sp.sqrt(2*(1-sp.exp(-bij)))*model.prop[i]*model.prop[j]
+                for k,var in enumerate(variables):
+                    md     = (model.mean[i,var]-model.mean[j,var])
+                    cs     = (model.cov[i,var,var]+model.cov[j,var,var])/2
+
+                    dij    = cs
+                    invCov = 1/float(cs)
+
+                    bij    = sp.dot(md, sp.dot(invCov,md.T) )/8 + 0.5*sp.log(dij/sp.sqrt(d[i,k]*d[j,k]))
+                    JM[k]  += sp.sqrt(2*(1-sp.exp(-bij)))*model.prop[i]*model.prop[j]
+
+    else:
+        for i in xrange(model.C):
+            for j in xrange(i+1,model.C):
+                cs  = (model.cov[i,idx,:][:,idx]+model.cov[j,idx,:][:,idx])/2
+                vp,Q,rcond = model.decomposition(cs,tau)
+                invCov = sp.dot(Q,((1/vp)*Q).T)
+                det = sp.prod(vp)
+
+                for k,var in enumerate(variables):
+                    id_t = list(idx)
+                    id_t.append(var)
+                    id_t.sort()
+
+                    md      = (model.mean[i,idx]-model.mean[j,idx])
+
+                    if direction=='forward':
+                        c1 = (model.cov[i,var,var]+model.cov[j,var,var])/2
+                        c2 = (model.cov[i,var,:][idx]+model.cov[j,var,:][idx])/2
+                        maj_cst = c1 + tau - sp.dot(c2, sp.dot(invCov,c2.T) )
+                        dij = maj_cst * det
+
+                        md_new  = (model.mean[i,id_t]-model.mean[j,id_t])
+                        ind      = id_t.index(var)
+                        row_feat = -1/float(maj_cst) * sp.dot(c2,invCov)
+                        row_feat = sp.insert( row_feat, ind, 1/float(maj_cst) )
+                        cst_feat = maj_cst * (sp.dot(row_feat,md_new.T)**2)
+
+                    elif direction=='backward':
+                        maj_cst     = 1/float( invCov[k,k] )
+                        dij = maj_cst * det
+
+                        row_feat   = invCov[k,:]
+                        cst_feat   = - maj_cst * (sp.dot(row_feat,md.T)**2)
+
+                    temp = sp.dot(md, sp.dot(invCov,md.T) ) + cst_feat
+
+                    bij = temp/8 + 0.5*sp.log(dij/sp.sqrt(d[i,k]*d[j,k]))
+                    JM[k] += sp.sqrt(2*(1-sp.exp(-bij)))*model.prop[i]*model.prop[j]
 
     return JM
 
@@ -383,10 +465,7 @@ class GMMFeaturesSelection(GMM):
             id_t.append(newFeat[1])
             id_t.sort()
         elif direction=='backward':
-            mask             = sp.ones(len(featIdx), dtype=bool)
-            mask[newFeat[0]] = False
-            id_del           = list(featIdx[mask])
-            id_t             = list(featIdx)
+            id_t = list(featIdx)
             id_t.sort()
 
         if tau==None:
@@ -532,7 +611,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
-                processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx)) for k in xrange(len(kfold))] # ATTTENTION à l'ordre de sortie des var
+                processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
             pool.close()
             pool.join()
 
@@ -598,7 +677,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
-                processes =  [pool.apply_async(compute_JM, args=('backward',idx,model_pre_cv[k],idx)) for k in xrange(len(kfold))]
+                processes =  [pool.apply_async(compute_JM, args=('backward',idx,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
             pool.close()
             pool.join()
 
@@ -624,67 +703,67 @@ class GMMFeaturesSelection(GMM):
         ## Return the final value
         return idx,criterionBestVal
 
-    def forward_selection_loo(self, samples, labels, stopMethod='maxVar', delta=0.1, maxvar=0.2, ncpus=None, tau=None):
-        """
-            Function that selects the most discriminative variables according to a forward search using Leave-One-Out method
-            Inputs:
-                samples, labels:  the training samples and their labels
-                stopMethod: the stopping criterion. It can be either 'maxVar' to continue until maxvar % of the variables are selected or either 'variation' to continue until variation of criterion function are less than delta. Default: 'maxVar'
-                delta :  the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta. Default value 0.1%
-                maxvar: maximum number of extracted variables. Default value: 20% of the original number
-                ncpus: number of cpus to use for parallelization. Default: all
-                tau: regularization parameter. Default: None
+    # def forward_selection_loo(self, samples, labels, stopMethod='maxVar', delta=0.1, maxvar=0.2, ncpus=None, tau=None):
+    #     """
+    #         Function that selects the most discriminative variables according to a forward search using Leave-One-Out method
+    #         Inputs:
+    #             samples, labels:  the training samples and their labels
+    #             stopMethod: the stopping criterion. It can be either 'maxVar' to continue until maxvar % of the variables are selected or either 'variation' to continue until variation of criterion function are less than delta. Default: 'maxVar'
+    #             delta :  the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta. Default value 0.1%
+    #             maxvar: maximum number of extracted variables. Default value: 20% of the original number
+    #             ncpus: number of cpus to use for parallelization. Default: all
+    #             tau: regularization parameter. Default: None
 
-            Outputs:
-                idx: the selected variables
-                criterionBestVal: the criterion value estimated for each idx by loocv
-        """
-        # Get some information from the variables
-        n = samples.shape[0]      # Number of samples
-        if ncpus is None:
-            ncpus=mp.cpu_count() # Get the number of core
+    #         Outputs:
+    #             idx: the selected variables
+    #             criterionBestVal: the criterion value estimated for each idx by loocv
+    #     """
+    #     # Get some information from the variables
+    #     n = samples.shape[0]      # Number of samples
+    #     if ncpus is None:
+    #         ncpus=mp.cpu_count() # Get the number of core
 
-        # Initialization
-        nbSelectFeat     = 0                       # Initialization of the counter
-        variables        = sp.arange(self.d)      # At step zero: d variables available
-        idx              = []                      # and no selected variable
-        criterionBestVal = []                      # list of the evolution the OA estimation
-        maxvar           = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
+    #     # Initialization
+    #     nbSelectFeat     = 0                       # Initialization of the counter
+    #     variables        = sp.arange(self.d)      # At step zero: d variables available
+    #     idx              = []                      # and no selected variable
+    #     criterionBestVal = []                      # list of the evolution the OA estimation
+    #     maxvar           = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
 
-        # Precompute the proportion and some others constants
-        log_prop_u = [sp.log((n*self.prop[c]-1.0)/(n-1.0)) for c in range(self.C)]
-        K_u        = 2*sp.log((n-1.0)/n)
-        beta       = [self.nbSpl[c]/(self.nbSpl[c]-1.0) for c in range(self.C)]# Constant for the rank one downdate
-        alpha      = [1/(self.nbSpl[c]-1) for c in range(self.C)]
+    #     # Precompute the proportion and some others constants
+    #     log_prop_u = [sp.log((n*self.prop[c]-1.0)/(n-1.0)) for c in range(self.C)]
+    #     K_u        = 2*sp.log((n-1.0)/n)
+    #     beta       = [self.nbSpl[c]/(self.nbSpl[c]-1.0) for c in range(self.C)]# Constant for the rank one downdate
+    #     alpha      = [1/(self.nbSpl[c]-1) for c in range(self.C)]
 
-        # Start the forward search
-        while(nbSelectFeat<maxvar) and (variables.size!=0):
-            # Parallelize for each variable
-            pool = mp.Pool(processes=ncpus)
-            processes =  [pool.apply_async(compute_loocv_gmm,args=(var,self,samples,labels,idx,K_u,alpha,beta,log_prop_u,tau)) for var in variables]
-            pool.close()
-            pool.join()
+    #     # Start the forward search
+    #     while(nbSelectFeat<maxvar) and (variables.size!=0):
+    #         # Parallelize for each variable
+    #         pool = mp.Pool(processes=ncpus)
+    #         processes =  [pool.apply_async(compute_loocv_gmm,args=(var,self,samples,labels,idx,K_u,alpha,beta,log_prop_u,tau)) for var in variables]
+    #         pool.close()
+    #         pool.join()
 
-            # Compute mean criterion value over each processus
-            criterionVal = sp.zeros(variables.size)
-            for i,p in enumerate(processes):
-                criterionVal[i] += p.get()
-            del processes,pool
+    #         # Compute mean criterion value over each processus
+    #         criterionVal = sp.zeros(variables.size)
+    #         for i,p in enumerate(processes):
+    #             criterionVal[i] += p.get()
+    #         del processes,pool
 
-            # Select the variable that provides the highest loocv
-            bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
-            criterionBestVal.append(criterionVal[bestVar])         # save criterion value
+    #         # Select the variable that provides the highest loocv
+    #         bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
+    #         criterionBestVal.append(criterionVal[bestVar])         # save criterion value
 
-            if nbSelectFeat==0:
-                idx.append(variables[bestVar])           # add the selected variables to the pool
-                variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
-            elif (stopMethod=='variation') and (((criterionBestVal[nbSelectFeat]-criterionBestVal[nbSelectFeat-1])/criterionBestVal[nbSelectFeat-1]*100) < delta):
-                criterionBestVal.pop()
-                break
-            else:
-                idx.append(variables[bestVar])
-                variables=sp.delete(variables,bestVar)
-            nbSelectFeat += 1
+    #         if nbSelectFeat==0:
+    #             idx.append(variables[bestVar])           # add the selected variables to the pool
+    #             variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
+    #         elif (stopMethod=='variation') and (((criterionBestVal[nbSelectFeat]-criterionBestVal[nbSelectFeat-1])/criterionBestVal[nbSelectFeat-1]*100) < delta):
+    #             criterionBestVal.pop()
+    #             break
+    #         else:
+    #             idx.append(variables[bestVar])
+    #             variables=sp.delete(variables,bestVar)
+    #         nbSelectFeat += 1
 
-        ## Return the final value
-        return idx,criterionBestVal
+    #     ## Return the final value
+    #     return idx,criterionBestVal
