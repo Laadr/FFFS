@@ -107,7 +107,7 @@ def compute_loocv_gmm(var,model,samples,labels,idx,K_u,alpha,beta,log_prop_u, ta
 
 def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx, tau=None, decisionMethod='linsyst'):
     """
-        Function that computes the accuracy of the model_cv using the variables : idx + one of variables
+        Function that computes the accuracy of the model_cv using the variables : idx +/- one of variables
         Inputs:
             direction:      'backward' or 'forward'
             criterion:      criterion function use to discriminate variables
@@ -167,7 +167,7 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
 
 def compute_JM(direction, variables, model, idx, tau=None):
     """
-        Function that computes the Jeffries–Matusita distance of the model_cv using the variables : idx + one of variables
+        Function that computes the Jeffries–Matusita distance of the model_cv using the variables : idx +/- one of variables
         Inputs:
             variables: the variable to add to idx
             model_cv:  the model build with all the variables
@@ -175,27 +175,8 @@ def compute_JM(direction, variables, model, idx, tau=None):
         Output:
             JM: the estimated Jeffries–Matusita distance
 
-        Used in GMM.forward_selection()
+        Used in GMM.forward_selection() and GMM.backward_selection()
     """
-    # # Initialization
-    # JM = sp.zeros(variables.size)
-
-    # # For all variables
-    # for k,var in enumerate(variables):
-    #     id_t = list(idx)
-    #     id_t.append(var)
-    #     id_t.sort()
-
-    #     for i in xrange(model.C):
-    #         for j in xrange(i+1,model.C):
-    #             md  = (model.mean[i,id_t]-model.mean[j,id_t])
-    #             cs  = (model.cov[i,id_t,:][:,id_t]+model.cov[j,id_t,:][:,id_t])/2
-    #             di  = linalg.det(model.cov[i,id_t,:][:,id_t])
-    #             dj  = linalg.det(model.cov[j,id_t,:][:,id_t])
-    #             dij = linalg.det(cs)
-    #             bij = sp.dot(md,linalg.solve(cs,md))/8 + 0.5*sp.log(0.5*dij/sp.sqrt(di*dj))
-    #             JM[k] += sp.sqrt(2*(1-sp.exp(-bij)))*model.prop[i]*model.prop[j]
-
     # Initialization
     JM = sp.zeros(variables.size)
     d  = sp.zeros((model.C,variables.size))
@@ -203,7 +184,6 @@ def compute_JM(direction, variables, model, idx, tau=None):
     # Cast and sort index of selected variables
     idx = list(idx)
     idx.sort()
-
 
     if tau==None:
         tau=0
@@ -248,13 +228,13 @@ def compute_JM(direction, variables, model, idx, tau=None):
                 det = sp.prod(vp)
 
                 for k,var in enumerate(variables):
-                    id_t = list(idx)
-                    id_t.append(var)
-                    id_t.sort()
-
                     md      = (model.mean[i,idx]-model.mean[j,idx])
 
                     if direction=='forward':
+                        id_t = list(idx)
+                        id_t.append(var)
+                        id_t.sort()
+
                         c1 = (model.cov[i,var,var]+model.cov[j,var,var])/2
                         c2 = (model.cov[i,var,:][idx]+model.cov[j,var,:][idx])/2
                         maj_cst = c1 + tau - sp.dot(c2, sp.dot(invCov,c2.T) )
@@ -279,6 +259,87 @@ def compute_JM(direction, variables, model, idx, tau=None):
                     JM[k] += sp.sqrt(2*(1-sp.exp(-bij)))*model.prop[i]*model.prop[j]
 
     return JM
+
+def compute_divKL(direction, variables, model, idx, tau=None):
+    """
+        Function that computes the  Kullback–Leibler divergence of the model_cv using the variables : idx +/- one of variables
+        Inputs:
+            variables: the variable to add to idx
+            model_cv:  the model build with all the variables
+            idx:       the pool of retained variables
+        Output:
+            divKL: the estimated Kullback–Leibler divergence
+
+        Used in GMM.forward_selection() and GMM.backward_selection()
+    """
+    # Initialization
+    divKL  = sp.zeros(variables.size)
+    invCov = sp.empty((model.C,len(idx),len(idx)))
+
+    # Cast and sort index of selected variables
+    idx = list(idx)
+    idx.sort()
+
+    if tau==None:
+        tau=0
+
+    # Compute invcov de idx
+    if len(idx)!=0:
+        for c in xrange(model.C):
+            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx],tau)
+            invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
+
+        del vp,Q,rcond
+
+
+
+    if len(idx)==0:
+        for k,var in enumerate(variables):
+            for i in xrange(model.C):
+                for j in xrange(i+1,model.C):
+                    md  = (model.mean[i,var]-model.mean[j,var])
+                    divKL[k] += 0.5*( ( model.cov[i,var,var] - model.cov[j,var,var] )*( 1/model.cov[j,var,var] - 1/model.cov[i,var,var] ) + ( 1/model.cov[j,var,var] - 1/model.cov[i,var,var] ) * (md**2) ) * model.prop[i]*model.prop[j]
+    else:
+        if direction=='forward':
+            invCov_maj = sp.empty((model.C,len(idx)+1,len(idx)+1))
+        elif direction=='backward':
+            invCov_maj = sp.empty((model.C,len(idx)-1,len(idx)-1))
+
+        for k,var in enumerate(variables):
+            if direction=='forward':
+                id_t      = list(idx)
+                id_t.append(var)
+                id_t.sort()
+                mask      = sp.ones(len(id_t), dtype=bool)
+                ind       = id_t.index(var)
+                mask[ind] = False
+            elif direction=='backward':
+                id_t    = list(idx)
+                mask    = sp.ones(len(idx), dtype=bool)
+                mask[k] = False
+                id_t    = id_t[mask]
+
+            for c in xrange(model.C):
+                if direction=='forward':
+                    maj_cst = model.cov[c,var,var] + tau - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) )
+                    invCov_maj[c,mask,:][:,mask] = invCov[c,:,:] + 1/float(maj_cst) * sp.dot( sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) , sp.dot(model.cov[c,var,:][idx],invCov[c,:,:]) )
+                    invCov_maj[c,ind,mask]  = - 1/float(maj_cst) * sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T)
+                    invCov_maj[c,mask,ind]  = - 1/float(maj_cst) * sp.dot(model.cov[c,var,:][idx],invCov[c,:,:])
+                    invCov_maj[c,ind,ind]   = 1/float(maj_cst)
+
+                elif direction=='backward':
+                    invCov_maj[c,:,:] = invCov[c,mask,mask] - 1/float(invCov[c,k,k]) * sp.dot(model.cov[c,var,:][idx].T , model.cov[c,var,:][idx])
+
+
+            for i in xrange(model.C):
+                for j in xrange(i+1,model.C):
+                    md  = (model.mean[i,id_t]-model.mean[j,id_t])
+                    # divKL[k] += 0.5*(sp.trace( sp.dot( model.cov[i,id_t,:][:,id_t] - model.cov[j,id_t,:][:,id_t], invCov_maj[j,:,:] - invCov_maj[i,:,:]) ) + sp.trace( sp.dot(invCov_maj[j,:,:] - invCov_maj[i,:,:], sp.dot(md.T,md) )) ) * model.prop[i]*model.prop[j]
+                    divKL[k] += 0.5*(sp.trace( sp.dot( model.cov[i,id_t,:][:,id_t] - model.cov[j,id_t,:][:,id_t], linalg.inv(model.cov[j,id_t,:][:,id_t]) - linalg.inv(model.cov[i,id_t,:][:,id_t])) ) + sp.trace( sp.dot(linalg.inv(model.cov[j,id_t,:][:,id_t]) - linalg.inv(model.cov[i,id_t,:][:,id_t]), sp.dot(md.T,md) )) ) * model.prop[i]*model.prop[j]
+                    print md.T.shape,sp.dot(md.T,md)
+
+    return divKL
+
 
 ## Confusion matrix
 
@@ -576,7 +637,7 @@ class GMMFeaturesSelection(GMM):
             Function that selects the most discriminative variables according to a forward search
             Inputs:
                 samples, labels: the training samples and their labels
-                criterion:       the criterion function to use for selection (accuracy, kappa, F1Mean, JM).
+                criterion:       the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).
                 stopMethod:      the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
                 delta:           the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
                 maxvar:          maximum number of extracted variables.
@@ -612,6 +673,8 @@ class GMMFeaturesSelection(GMM):
                 processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
+            elif criterion == 'divKL':
+                processes =  [pool.apply_async(compute_divKL, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
             pool.close()
             pool.join()
 
@@ -645,7 +708,7 @@ class GMMFeaturesSelection(GMM):
             Function that selects the most discriminative variables according to a backward search
             Inputs:
                 samples, labels:  the training samples and their labels
-                criterion:        the criterion function to use for selection (accuracy or JM).
+                criterion:        the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).
                 stopMethod:       the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
                 delta :           the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
                 maxvar:           maximum number of extracted variables.
@@ -678,6 +741,8 @@ class GMMFeaturesSelection(GMM):
                 processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 processes =  [pool.apply_async(compute_JM, args=('backward',idx,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
+            elif criterion == 'divKL':
+                processes =  [pool.apply_async(compute_divKL, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
             pool.close()
             pool.join()
 

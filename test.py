@@ -26,9 +26,9 @@ print "Accuracy without selection: ", float(t.size)/y.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('forward',x, y,criterion='JM', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=5,balanced=True,tau=0.0001,decisionMethod='inv')
+idx,selectionOA = model.selection_cv('forward',x, y,criterion='JM', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 idx.sort()
-yp     = model.predict_gmm(x,featIdx=idx,tau=0.0001)[0]
+yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
 OA     = (j.size*100.0)/y.size
 print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
@@ -40,9 +40,9 @@ print "Pertinent features (by construction): ", var
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('forward',x, y,criterion='accuracy', stopMethod='maxVar',delta=1.5, maxvar=4,nfold=5,balanced=True,tau=0.0001,decisionMethod='inv')
+idx,selectionOA = model.selection_cv('forward',x, y,criterion='divKL', stopMethod='maxVar',delta=1.5, maxvar=4,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 idx.sort()
-yp     = model.predict_gmm(x,featIdx=idx,tau=0.0001)[0]
+yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
 OA     = (j.size*100.0)/y.size
 print "\nResults for 5-CV with accuracy as criterion and backward selection\n"
