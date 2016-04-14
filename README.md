@@ -1,6 +1,3 @@
-# FFFS
-Fast Forward Features Selection
-
 #+TITLE: README for Fast Forward Feature Selection
 #+AUTHOR: Adrien Lagrange
 #+EMAIL: ad.lagrange@gmail.com
