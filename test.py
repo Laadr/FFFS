@@ -4,9 +4,9 @@ import scipy as sp
 import time
 
 n     = 400 # Number of samples
-d     = 50 # Number of dimension
+d     = 200 # Number of dimension
 noise = 0.2
-sp.random.seed(1)
+sp.random.seed(10)
 var   = sp.random.random_integers(0,d-1,3)
 
 x               = sp.dot(sp.random.randn(n,d),sp.random.randn(d,d)) # Generate random samples
@@ -19,14 +19,14 @@ y[t>sp.mean(t)] = 2
 
 model    = npfs.GMMFeaturesSelection()
 model.learn_gmm(x, y)
-yp       = model.predict_gmm(x,tau=None)[0]
+yp       = model.predict_gmm(x,tau=None,decisionMethod='inv')[0]
 yp.shape = y.shape
 t        = sp.where(yp==y)[0]
 print "Accuracy without selection: ", float(t.size)/y.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('forward',x, y,criterion='JM', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection_cv('forward',x, y,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=6,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 idx.sort()
 yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
@@ -40,7 +40,7 @@ print "Pertinent features (by construction): ", var
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('forward',x, y,criterion='divKL', stopMethod='maxVar',delta=1.5, maxvar=4,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection_cv('SFFS',x, y,criterion='accuracy', stopMethod='maxVar',delta=1.5, maxvar=6,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 idx.sort()
 yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
