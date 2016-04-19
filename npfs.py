@@ -556,7 +556,7 @@ class GMMFeaturesSelection(GMM):
 
                 elif direction=='backward':
                     d_feat     = 1/float( invCov[c,newFeat[0],newFeat[0]] )
-                    logdet_maj = - sp.log(d_feat) + logdet[c]
+                    logdet_majs = - sp.log(d_feat) + logdet[c]
 
                     row_feat   = invCov[c,newFeat[0],:]
                     cst_feat   = - d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
@@ -674,6 +674,9 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
+                for k, (trainInd,testInd) in enumerate(kfold):
+                    compute_JM('forward',variables,model_pre_cv[k],idx,tau)
+                    break
                 processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
             elif criterion == 'divKL':
                 processes =  [pool.apply_async(compute_divKL, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
