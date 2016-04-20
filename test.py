@@ -26,7 +26,7 @@ print "Accuracy without selection: ", float(t.size)/y.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('forward',x, y,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=6,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection_cv('forward',x, y,criterion='JM', stopMethod='maxVar', delta=1.5, maxvar=6,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 idx.sort()
 yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
@@ -38,19 +38,19 @@ print "Evolution of accuracy during selection: ", selectionOA
 print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var
 
-# 5-CV
-ts     = time.time()
-idx,selectionOA = model.selection_cv('SFFS',x, y,criterion='accuracy', stopMethod='maxVar',delta=1.5, maxvar=6,nfold=5,balanced=True,tau=None,decisionMethod='inv')
-idx.sort()
-yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
-j      = sp.where(yp.ravel()==y.ravel())[0]
-OA     = (j.size*100.0)/y.size
-print "\nResults for 5-CV with accuracy as criterion and backward selection\n"
-print "Processing time: ", time.time()-ts
-print "Selected features: ", idx
-print "Evolution of accuracy during selection: ", selectionOA
-print "Final accuracy: ", OA
-print "Pertinent features (by construction): ", var
+# # 5-CV
+# ts     = time.time()
+# idx,selectionOA = model.selection_cv('SFFS',x, y,criterion='accuracy', stopMethod='maxVar',delta=1.5, maxvar=6,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+# idx.sort()
+# yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
+# j      = sp.where(yp.ravel()==y.ravel())[0]
+# OA     = (j.size*100.0)/y.size
+# print "\nResults for 5-CV with accuracy as criterion and backward selection\n"
+# print "Processing time: ", time.time()-ts
+# print "Selected features: ", idx
+# print "Evolution of accuracy during selection: ", selectionOA
+# print "Final accuracy: ", OA
+# print "Pertinent features (by construction): ", var
 
 # # 5-CV
 # ts     = time.time()

@@ -203,7 +203,7 @@ def compute_JM(direction, variables, model, idx, tau=None):
                 if direction=='forward':
                     maj_cst = model.cov[c,var,var] + tau - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov,model.cov[c,var,:][idx].T) )
                 elif direction=='backward':
-                    maj_cst     = 1/float( invCov[k,k] )
+                    maj_cst = 1/float( invCov[k,k] )
                 d[c,k]  = maj_cst * det
         del vp,Q,rcond,maj_cst,invCov
 
@@ -276,6 +276,7 @@ def compute_divKL(direction, variables, model, idx, tau=None):
     # Initialization
     divKL  = sp.zeros(variables.size)
     invCov = sp.empty((model.C,len(idx),len(idx)))
+    d  = sp.zeros((model.C,variables.size))
 
     # Cast and sort index of selected variables
     idx = list(idx)
@@ -285,21 +286,33 @@ def compute_divKL(direction, variables, model, idx, tau=None):
         tau=0
 
     # Compute invcov de idx
-    if len(idx)!=0:
+    if len(idx)==0:
+        for c in xrange(model.C):
+            for k,var in enumerate(variables):
+                d[c,k] = model.cov[c,var,var]
+    else:
         for c in xrange(model.C):
             vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx],tau)
+            det = sp.prod(vp)
             invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
-
-        del vp,Q,rcond
-
+            for k,var in enumerate(variables):
+                if direction=='forward':
+                    maj_cst = model.cov[c,var,var] + tau - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) )
+                elif direction=='backward':
+                    maj_cst     = 1/float( invCov[k,k] )
+                d[c,k]  = maj_cst * det
+        del vp,Q,rcond,maj_cst
 
 
     if len(idx)==0:
         for k,var in enumerate(variables):
             for i in xrange(model.C):
                 for j in xrange(i+1,model.C):
+                    invCov = 1/float(model.cov[j,var,var])
+
                     md  = (model.mean[i,var]-model.mean[j,var])
-                    divKL[k] += 0.5*( ( model.cov[i,var,var] - model.cov[j,var,var] )*( 1/model.cov[j,var,var] - 1/model.cov[i,var,var] ) + ( 1/model.cov[j,var,var] - 1/model.cov[i,var,var] ) * (md**2) ) * model.prop[i]*model.prop[j]
+                    divKL[k] += 0.5*( invCov*model.cov[i,var,var] + md*invCov*md + sp.log(d[j,k]/d[i,k]) ) * model.prop[i]*model.prop[j]
+                    # divKL[k] += 0.5*( ( model.cov[i,var,var] - model.cov[j,var,var] )*( 1/model.cov[j,var,var] - 1/model.cov[i,var,var] ) + ( 1/model.cov[j,var,var] - 1/model.cov[i,var,var] ) * (md**2) ) * model.prop[i]*model.prop[j]
     else:
         if direction=='forward':
             invCov_maj = sp.empty((model.C,len(idx)+1,len(idx)+1))
@@ -333,11 +346,11 @@ def compute_divKL(direction, variables, model, idx, tau=None):
 
 
             for i in xrange(model.C):
-                for j in xrange(i+1,model.C):
-                    md  = (model.mean[i,id_t]-model.mean[j,id_t])
-                    # divKL[k] += 0.5*(sp.trace( sp.dot( model.cov[i,id_t,:][:,id_t] - model.cov[j,id_t,:][:,id_t], invCov_maj[j,:,:] - invCov_maj[i,:,:]) ) + sp.trace( sp.dot(invCov_maj[j,:,:] - invCov_maj[i,:,:], sp.dot(md.T,md) )) ) * model.prop[i]*model.prop[j]
-                    divKL[k] += 0.5*(sp.trace( sp.dot( model.cov[i,id_t,:][:,id_t] - model.cov[j,id_t,:][:,id_t], linalg.inv(model.cov[j,id_t,:][:,id_t]) - linalg.inv(model.cov[i,id_t,:][:,id_t])) ) + sp.trace( sp.dot(linalg.inv(model.cov[j,id_t,:][:,id_t]) - linalg.inv(model.cov[i,id_t,:][:,id_t]), sp.dot(md.T,md) )) ) * model.prop[i]*model.prop[j]
-                    print md.T.shape,sp.dot(md.T,md)
+                for j in xrange(model.C):
+                    if i!=j:
+                        md  = (model.mean[i,id_t]-model.mean[j,id_t])
+                        divKL[k] += 0.5*( sp.trace(sp.dot( invCov_maj[j,:,:],model.cov[i,id_t,:][:,id_t] )) + sp.dot(md,sp.dot(invCov_maj[j,:,:],md.T)) + sp.log(d[j,k]/d[i,k]) ) * model.prop[i]*model.prop[j]
+                        # divKL[k] += 0.5*(sp.trace( sp.dot( model.cov[i,id_t,:][:,id_t] - model.cov[j,id_t,:][:,id_t], invCov_maj[j,:,:] - invCov_maj[i,:,:]) ) + sp.trace( sp.dot(invCov_maj[j,:,:] - invCov_maj[i,:,:], sp.dot(md.T,md) )) ) * model.prop[i]*model.prop[j]
 
     return divKL
 
@@ -444,7 +457,7 @@ class GMM(object):
             # Update GMM
             self.nbSpl[i]   = float(j.size)
             self.mean[i,:]  = sp.mean(samples[j,:],axis=0)
-            self.cov[i,:,:] = sp.cov(samples[j,:],rowvar=0)  # Normalize by ni to be consistent with the update formulae
+            self.cov[i,:,:] = sp.cov(samples[j,:],rowvar=None)
 
         self.prop = self.nbSpl/samples.shape[0]
 
@@ -542,6 +555,8 @@ class GMMFeaturesSelection(GMM):
 
                 tmp = float(self.cov[c,id_t,id_t])
                 temp = sp.dot([[tmp/(tmp**2 + tau)]], testSamples_c.T).T
+                # if logdet_maj.imag != 0.:
+                #     print logdet_maj, c, self.nbSpl[c], sp.diag(self.cov[c,:,:])
                 scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + logdet_maj - 2*sp.log(self.prop[c])
             else:
                 if direction=='forward':
@@ -612,13 +627,18 @@ class GMMFeaturesSelection(GMM):
             # Update the model for each class
             for c in xrange(self.C):
                 classInd = sp.where(testLabels==(c+1))[0]
-                nk_c = float(classInd.size)
-                mean_k = sp.mean(testSamples[classInd,:],axis=0)
-                cov_k = sp.cov(testSamples[classInd,:],rowvar=0)
+                nk_c     = float(classInd.size)
+                mean_k   = sp.mean(testSamples[classInd,:],axis=0)
+                cov_k    = sp.cov(testSamples[classInd,:],rowvar=None)
 
                 model_pre_cv[k].nbSpl[c]  = self.nbSpl[c] - nk_c
                 model_pre_cv[k].mean[c,:] = (self.nbSpl[c]*self.mean[c,:]-nk_c*mean_k)/(self.nbSpl[c]-nk_c)
                 model_pre_cv[k].cov[c,:]  = ((self.nbSpl[c]-1)*self.cov[c,:,:] - nk_c*cov_k - nk_c*self.nbSpl[c]/model_pre_cv[k].nbSpl[c]*sp.outer(self.mean[c,:]-mean_k,self.mean[c,:]-mean_k))/model_pre_cv[k].nbSpl[c]
+
+                # if c==1 and k==3:
+                #     print sp.diag(model_pre_cv[k].cov[c,:])
+                #     classInd = sp.where(labels[trainInd]==(c+1))[0]
+                #     print sp.diag( sp.cov(samples[classInd,:],rowvar=None) )
                 del classInd,nk_c,mean_k,cov_k
 
             # Update proportion
