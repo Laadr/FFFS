@@ -556,7 +556,7 @@ class GMMFeaturesSelection(GMM):
 
                 elif direction=='backward':
                     d_feat     = 1/float( invCov[c,newFeat[0],newFeat[0]] )
-                    logdet_majs = - sp.log(d_feat) + logdet[c]
+                    logdet_maj = - sp.log(d_feat) + logdet[c]
 
                     row_feat   = invCov[c,newFeat[0],:]
                     cst_feat   = - d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
@@ -831,54 +831,57 @@ class GMMFeaturesSelection(GMM):
             nbSelectFeat += 1
             bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
             if nbSelectFeat <= len(criterionBestVal) and criterionVal[bestVar] < criterionBestVal[nbSelectFeat-1]:
-                idx = idxBestSets[nbSelectFeat]
+                idx       = idxBestSets[nbSelectFeat-1][0]
+                variables = idxBestSets[nbSelectFeat-1][1]
+                print sp.sort(idx)," jump"
             else:
 
                 idx.append(variables[bestVar])
+                print sp.sort(idx)
                 variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
                 if nbSelectFeat > len(criterionBestVal):
                     criterionBestVal.append(criterionVal[bestVar])   # save criterion value
-                    idxBestSets.append(idx)
+                    idxBestSets.append((list(idx),variables))
                 else:
                     criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
-                    idxBestSets[nbSelectFeat-1] = idx
+                    idxBestSets[nbSelectFeat-1] = (list(idx),variables)
 
-                # # print "add ",idx
-                # flagBacktrack = True
+                # print "add ",idx
+                flagBacktrack = True
 
-                # while flagBacktrack and nbSelectFeat > 2:
+                while flagBacktrack and nbSelectFeat > 2:
 
-                #     # Parallelize cv
-                #     pool = mp.Pool(processes=ncpus)
-                #     if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
-                #         processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
-                #     elif criterion == 'JM':
-                #         processes =  [pool.apply_async(compute_JM, args=('backward',sp.array(idx),model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
-                #     elif criterion == 'divKL':
-                #         processes =  [pool.apply_async(compute_divKL, args=('backward',sp.array(idx),model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
-                #     pool.close()
-                #     pool.join()
+                    # Parallelize cv
+                    pool = mp.Pool(processes=ncpus)
+                    if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
+                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                    elif criterion == 'JM':
+                        processes =  [pool.apply_async(compute_JM, args=('backward',sp.array(idx),model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
+                    elif criterion == 'divKL':
+                        processes =  [pool.apply_async(compute_divKL, args=('backward',sp.array(idx),model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
+                    pool.close()
+                    pool.join()
 
-                #     # Compute mean criterion value over each processus
-                #     criterionVal = sp.zeros(len(idx))
-                #     for p in processes:
-                #         criterionVal += p.get()
-                #     criterionVal /= len(kfold)
-                #     del processes,pool
+                    # Compute mean criterion value over each processus
+                    criterionVal = sp.zeros(len(idx))
+                    for p in processes:
+                        criterionVal += p.get()
+                    criterionVal /= len(kfold)
+                    del processes,pool
 
-                #     bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
+                    bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
 
-                #     # print "size ",bestVar.size,"new ",criterionVal[bestVar], "stored ",criterionBestVal[nbSelectFeat-2]
-                #     if criterionVal[bestVar] > criterionBestVal[nbSelectFeat-2]:
-                #         nbSelectFeat -= 1
-                #         variables = sp.sort( sp.append(variables,idx[bestVar]) )
-                #         del idx[bestVar]
-                #         # print "del ", idx
+                    # print "size ",bestVar.size,"new ",criterionVal[bestVar], "stored ",criterionBestVal[nbSelectFeat-2]
+                    if criterionVal[bestVar] > criterionBestVal[nbSelectFeat-2]:
+                        nbSelectFeat -= 1
+                        variables = sp.sort( sp.append(variables,idx[bestVar]) )
+                        del idx[bestVar]
+                        # print "del ", idx
 
-                #         criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
-                #         idxBestSets[nbSelectFeat-1] = idx
-                #     else:
-                #         flagBacktrack = False
+                        criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
+                        idxBestSets[nbSelectFeat-1] = (list(idx),variables)
+                    else:
+                        flagBacktrack = False
 
         ## Return the final value
         return idx,criterionBestVal
