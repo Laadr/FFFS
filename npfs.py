@@ -158,11 +158,11 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
 
         confMatrix.compute_confusion_matrix(predLabels,labels)
         if criterion=='accuracy':
-            metric[i] = confMatrix.OA
+            metric[i] = confMatrix.get_OA()
         elif criterion=='F1Mean':
-            metric[i] = confMatrix.F1Mean
+            metric[i] = confMatrix.get_F1Mean()
         elif criterion=='kappa':
-            metric[i] = confMatrix.Kappa
+            metric[i] = confMatrix.get_kappa()
 
     return metric
 
@@ -360,9 +360,7 @@ def compute_divKL(direction, variables, model, idx, tau=None):
 class ConfusionMatrix(object):
     def __init__(self):
         self.confusion_matrix = None
-        self.OA               = None
-        self.Kappa            = None
-        self.F1Mean           = None
+        self.n = None
 
     def compute_confusion_matrix(self,yp,yr):
         """
@@ -372,25 +370,36 @@ class ConfusionMatrix(object):
                 yr: reference labels
         """
         # Initialization
-        n = yp.size
-        C = int(yr.max())
-        self.confusion_matrix = sp.zeros((C,C))
+        self.n                = yp.size
+        C                     = int(yr.max())
+        self.confusion_matrix = sp.zeros((C,C),dtype=int)
 
         # Compute confusion matrix
-        for i in xrange(n):
-            self.confusion_matrix[yp[i].astype(int)-1, yr[i].astype(int)-1] += 1
+        for c1 in xrange(C):
+            for c2 in xrange(C):
+                self.confusion_matrix[c1, c2] = sp.sum( (yp==(c1+1)) * (yr==(c2+1)) )
 
-        # Compute overall accuracy
-        self.OA = sp.sum(sp.diag(self.confusion_matrix))/n
+    def get_OA(self):
+        """
+            Compute overall accuracy
+        """
+        return sp.sum(sp.diag(self.confusion_matrix))/float(self.n)
 
-        # Compute Kappa
+    def get_kappa(self):
+        """
+            Compute Kappa
+        """
         nl = sp.sum(self.confusion_matrix,axis=1)
         nc = sp.sum(self.confusion_matrix,axis=0)
+        OA = sp.sum(sp.diag(self.confusion_matrix))/float(self.n)
 
-        self.Kappa = ((n**2)*self.OA - sp.sum(nc*nl))/(n**2-sp.sum(nc*nl))
+        return ((self.n**2)*OA - sp.sum(nc*nl))/(self.n**2-sp.sum(nc*nl))
 
-        # Compute F1 Mean
-        self.F1Mean = sp.sum(2*sp.diag(self.confusion_matrix) / (nl + nc))/n
+    def get_F1Mean(self):
+        """
+            Compute F1 Mean
+        """
+        return sp.sum(2*sp.diag(self.confusion_matrix) / (nl + nc))/float(self.n)
 
 ## Gaussian Mixture Model
 
@@ -611,6 +620,9 @@ class GMMFeaturesSelection(GMM):
         # Get some information from the variables
         n = samples.shape[0]      # Number of samples
 
+        # Cast to speed processing time
+        labels = labels.ravel().astype(int)
+
         # Creation of folds
         if balanced:
             kfold = cv.StratifiedKFold(labels.ravel(),n_folds=nfold,shuffle=True,random_state=1) # kfold is an iterator
@@ -692,7 +704,9 @@ class GMMFeaturesSelection(GMM):
             # Parallelize cv
             pool = mp.Pool(processes=ncpus)
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                for k, (trainInd,testInd) in enumerate(kfold):
+                    out = compute_metric_gmm('forward',criterion,variables,model_pre_cv[0],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)
+                # processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 for k, (trainInd,testInd) in enumerate(kfold):
                     compute_JM('forward',variables,model_pre_cv[k],idx,tau)
@@ -705,10 +719,11 @@ class GMMFeaturesSelection(GMM):
 
             # Compute mean criterion value over each processus
             criterionVal = sp.zeros(variables.size)
-            for p in processes:
-                criterionVal += p.get()
-            criterionVal /= len(kfold)
-            del processes,pool
+            criterionVal = out
+            # for p in processes:
+            #     criterionVal += p.get()
+            # criterionVal /= len(kfold)
+            # del processes,pool
 
             # Select the variable that provides the highest loocv
             bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
