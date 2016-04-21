@@ -566,17 +566,21 @@ class GMMFeaturesSelection(GMM):
                 temp = sp.dot([[tmp/(tmp**2 + tau)]], testSamples_c.T).T
                 # if logdet_maj.imag != 0.:
                 #     print logdet_maj, c, self.nbSpl[c], sp.diag(self.cov[c,:,:])
-                scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + logdet_maj - 2*sp.log(self.prop[c])
+                scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + logdet_maj - self.logprop[c]
             else:
                 if direction=='forward':
                     d_feat     = self.cov[c,newFeat[1],newFeat[1]] + tau - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
                     logdet_maj = sp.log(d_feat) + logdet[c]
 
-                    ind           = id_t.index(newFeat[1])
-                    row_feat      = -1/float(d_feat) * sp.dot(self.cov[c,:,newFeat[1]][featIdx],invCov[c,:,:][:,:])
-                    row_feat      = sp.insert( row_feat, ind, 1/float(d_feat) )
-                    cst_feat      = d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
-                    testSamples_c = testSamples[:,featIdx] - self.mean[c,featIdx]
+                    ind            = id_t.index(newFeat[1])
+                    mask           = sp.ones(len(id_t), dtype=bool)
+                    mask[ind]      = False
+                    row_feat       = sp.empty((len(id_t)))
+                    row_feat[mask] = -1/float(d_feat) * sp.dot(self.cov[c,:,newFeat[1]][featIdx],invCov[c,:,:][:,:])
+                    row_feat[ind]  = 1/float(d_feat)
+                    # row_feat      = sp.insert( row_feat, ind, 1/float(d_feat) )
+                    cst_feat       = d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
+                    testSamples_c  = testSamples[:,featIdx] - self.mean[c,featIdx]
 
                 elif direction=='backward':
                     d_feat     = 1/float( invCov[c,newFeat[0],newFeat[0]] )
@@ -585,7 +589,7 @@ class GMMFeaturesSelection(GMM):
                     row_feat   = invCov[c,newFeat[0],:]
                     cst_feat   = - d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
 
-                cst = logdet_maj - 2*sp.log(self.prop[c]) # Pre compute the constant term
+                cst = logdet_maj - self.logprop[c] # Pre compute the constant term
 
                 temp = sp.dot(invCov[c,:,:][:,:], testSamples_c.T).T
 
@@ -597,7 +601,7 @@ class GMMFeaturesSelection(GMM):
         predLabels = sp.argmin(scores,1)+1
         return predLabels,scores
 
-    def selection_cv(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, tau=None, ncpus=None, decisionMethod='linsyst'):
+    def selection_cv(self, direction, samples, labels, criterion='JM', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, tau=None, ncpus=None, decisionMethod='linsyst'):
         """
             Function that selects the most discriminative variables according to a given search method
             Inputs:
@@ -656,6 +660,9 @@ class GMMFeaturesSelection(GMM):
             # Update proportion
             model_pre_cv[k].prop = model_pre_cv[k].nbSpl/(n-nk)
 
+            # Precompute cst
+            model_pre_cv[k].logprop = 2*sp.log(model_pre_cv[k].prop)
+
             del testSamples,testLabels,nk
 
         if direction == 'forward':
@@ -704,9 +711,7 @@ class GMMFeaturesSelection(GMM):
             # Parallelize cv
             pool = mp.Pool(processes=ncpus)
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
-                for k, (trainInd,testInd) in enumerate(kfold):
-                    out = compute_metric_gmm('forward',criterion,variables,model_pre_cv[0],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)
-                # processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 for k, (trainInd,testInd) in enumerate(kfold):
                     compute_JM('forward',variables,model_pre_cv[k],idx,tau)
@@ -719,11 +724,10 @@ class GMMFeaturesSelection(GMM):
 
             # Compute mean criterion value over each processus
             criterionVal = sp.zeros(variables.size)
-            criterionVal = out
-            # for p in processes:
-            #     criterionVal += p.get()
-            # criterionVal /= len(kfold)
-            # del processes,pool
+            for p in processes:
+                criterionVal += p.get()
+            criterionVal /= len(kfold)
+            del processes,pool
 
             # Select the variable that provides the highest loocv
             bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
@@ -845,22 +849,26 @@ class GMMFeaturesSelection(GMM):
         while(nbSelectFeat<maxvar) and (variables.size!=0):
 
             # Parallelize cv
-            pool = mp.Pool(processes=ncpus)
+            # pool = mp.Pool(processes=ncpus)
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                out = sp.zeros(variables.size)
+                for k, (trainInd,testInd) in enumerate(kfold):
+                    out += compute_metric_gmm('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)
+                # processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
                 processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
             elif criterion == 'divKL':
                 processes =  [pool.apply_async(compute_divKL, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
-            pool.close()
-            pool.join()
+            # pool.close()
+            # pool.join()
 
             # Compute mean criterion value over each processus
             criterionVal = sp.zeros(variables.size)
-            for p in processes:
-                criterionVal += p.get()
-            criterionVal /= len(kfold)
-            del processes,pool
+            criterionVal = out/ len(kfold)
+            # for p in processes:
+            #     criterionVal += p.get()
+            # criterionVal /= len(kfold)
+            # del processes,pool
 
             # Select the variable that provides the highest criterion
             nbSelectFeat += 1
@@ -887,22 +895,26 @@ class GMMFeaturesSelection(GMM):
                 while flagBacktrack and nbSelectFeat > 2:
 
                     # Parallelize cv
-                    pool = mp.Pool(processes=ncpus)
+                    # pool = mp.Pool(processes=ncpus)
                     if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
-                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                        out = sp.zeros(len(idx))
+                        for k, (trainInd,testInd) in enumerate(kfold):
+                            out += compute_metric_gmm('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)
+                        # processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
                     elif criterion == 'JM':
                         processes =  [pool.apply_async(compute_JM, args=('backward',sp.array(idx),model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
                     elif criterion == 'divKL':
                         processes =  [pool.apply_async(compute_divKL, args=('backward',sp.array(idx),model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
-                    pool.close()
-                    pool.join()
+                    # pool.close()
+                    # pool.join()
 
                     # Compute mean criterion value over each processus
                     criterionVal = sp.zeros(len(idx))
-                    for p in processes:
-                        criterionVal += p.get()
-                    criterionVal /= len(kfold)
-                    del processes,pool
+                    criterionVal = out/len(kfold)
+                    # for p in processes:
+                    #     criterionVal += p.get()
+                    # criterionVal /= len(kfold)
+                    # del processes,pool
 
                     bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
 
