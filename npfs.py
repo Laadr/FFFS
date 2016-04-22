@@ -648,12 +648,11 @@ class GMMFeaturesSelection(GMM):
 
                 model_pre_cv[k].nbSpl[c]  = self.nbSpl[c] - nk_c
                 model_pre_cv[k].mean[c,:] = (self.nbSpl[c]*self.mean[c,:]-nk_c*mean_k)/(self.nbSpl[c]-nk_c)
-                model_pre_cv[k].cov[c,:]  = ((self.nbSpl[c]-1)*self.cov[c,:,:] - nk_c*cov_k - nk_c*self.nbSpl[c]/model_pre_cv[k].nbSpl[c]*sp.outer(self.mean[c,:]-mean_k,self.mean[c,:]-mean_k))/model_pre_cv[k].nbSpl[c]
+                model_pre_cv[k].cov[c,:]  = ((self.nbSpl[c]-1)*self.cov[c,:,:] - (nk_c-1)*cov_k - nk_c*self.nbSpl[c]/model_pre_cv[k].nbSpl[c]*sp.outer(self.mean[c,:]-mean_k,self.mean[c,:]-mean_k))/(model_pre_cv[k].nbSpl[c]-1)
 
-                # if c==1 and k==3:
-                #     print sp.diag(model_pre_cv[k].cov[c,:])
-                #     classInd = sp.where(labels[trainInd]==(c+1))[0]
-                #     print sp.diag( sp.cov(samples[classInd,:],rowvar=None) )
+                if c==2 and k==0:
+                    classInd = sp.where(labels[trainInd]==(c+1))[0]
+                    print sp.divide(sp.diag( sp.cov(samples[trainInd,:][classInd,:],rowvar=None) ) - sp.diag(model_pre_cv[k].cov[c,:]) , sp.diag( sp.cov(samples[trainInd,:][classInd,:],rowvar=None) ))
                 del classInd,nk_c,mean_k,cov_k
 
             # Update proportion
