@@ -14,10 +14,5 @@
 
 * Usage
   See the file ~test.py~
-  
 
-  
-
-  
-
-
+  Data labels needs to be integers from 1 to classNumbers.
