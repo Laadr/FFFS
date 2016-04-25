@@ -298,7 +298,6 @@ def compute_divKL(direction, variables, model, idx, tau=None):
 
     return divKL
 
-
 ## Confusion matrix
 
 class ConfusionMatrix(object):
@@ -350,12 +349,16 @@ class ConfusionMatrix(object):
 class GMM(object):
 
     def __init__(self, d=0, C=0):
-        self.nbSpl   = sp.empty((C,1)) # array of number of samples in each class
-        self.prop    = sp.empty((C,1)) # array of proportion in training set
-        self.mean    = sp.empty((C,d)) # array of means
-        self.cov     = sp.empty((C,d,d)) # array of covariance matrices
-        self.C       = C            # number of class
-        self.d       = d            # number of features
+        self.nbSpl = sp.empty((C,1)) # array of number of samples in each class
+        self.prop  = sp.empty((C,1)) # array of proportion in training set
+        self.mean  = sp.empty((C,d)) # array of means
+        self.cov   = sp.empty((C,d,d)) # array of covariance matrices
+        self.C     = C            # number of class
+        self.d     = d            # number of features
+
+        self.idxDecomp = []
+        self.vp    = sp.empty((C,d))   # array of eigenvalues
+        self.Q     = sp.empty((C,d,d)) # array of eigenvectors
 
     def decomposition(self, M, tau=None):
         """
@@ -397,10 +400,10 @@ class GMM(object):
         self.d = samples.shape[1]   # Number of variables
 
         # Initialization
-        self.nbSpl = sp.empty((self.C,1))   # Vector of number of samples for each class
-        self.prop  = sp.empty((self.C,1))   # Vector of proportion
-        self.mean  = sp.empty((self.C,self.d))   # Vector of means
-        self.cov   = sp.empty((self.C,self.d,self.d)) # Matrix of covariance
+        self.nbSpl  = sp.empty((self.C,1))   # Vector of number of samples for each class
+        self.prop   = sp.empty((self.C,1))   # Vector of proportion
+        self.mean   = sp.empty((self.C,self.d))   # Vector of means
+        self.cov    = sp.empty((self.C,self.d,self.d)) # Matrix of covariance
 
         # Learn the parameter of the model for each class
         for i in xrange(self.C):
@@ -433,23 +436,39 @@ class GMM(object):
 
         # If not specified, predict with all features
         if featIdx == None:
-            featIdx = range(testSamples.shape[1])
+            idx = range(testSamples.shape[1])
+        else:
+            idx = featIdx
+
+        if self.idxDecomp != idx:
+            self.vp    = sp.empty((self.C,len(idx)))   # array of eigenvalues
+            self.Q     = sp.empty((self.C,len(idx),len(idx))) # array of eigenvectors
+
+        if tau==None:
+            tau = 0
 
         # Start the prediction for each class
         for c in xrange(self.C):
-            testSamples_c = testSamples[:,featIdx] - self.mean[c,featIdx]
-            vp,Q,rcond    = self.decomposition(self.cov[c,featIdx,:][:,featIdx],tau)
-            logdet        = sp.sum(sp.log(vp))
+            testSamples_c = testSamples[:,idx] - self.mean[c,idx]
+
+            if self.idxDecomp != idx:
+                self.vp[c,:],self.Q[c,:,:],rcond = self.decomposition(self.cov[c,idx,:][:,idx],None)
+
+            regvp = self.vp[c,:] + tau
+            rcond = regvp.min()/regvp.max()
+
+            logdet        = sp.sum(sp.log(regvp))
             cst           = logdet - 2*sp.log(self.prop[c]) # Pre compute the constant term
 
             if decisionMethod=='inv':
-                temp = sp.dot( sp.dot(Q,((1/vp)*Q).T) , testSamples_c.T).T
+                temp = sp.dot( sp.dot(self.Q[c,:,:][:,:],((1/regvp)*self.Q[c,:,:][:,:]).T) , testSamples_c.T).T
             else:
-                temp = mylstsq(self.cov[c,featIdx,:][:,featIdx],testSamples_c.T,rcond).T
+                temp = mylstsq(self.cov[c,idx,:][:,idx],testSamples_c.T,rcond).T
 
             scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst
 
             del temp,testSamples_c
+        self.idxDecomp == idx
 
         # Assign the label to the minimum value of scores
         predLabels = sp.argmin(scores,1)+1
