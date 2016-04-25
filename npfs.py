@@ -51,60 +51,6 @@ def safe_logdet(cov):
     e = sp.where(e<eps,eps,e)
     return sp.sum(sp.log(e)),rcond
 
-def compute_loocv_gmm(var,model,samples,labels,idx,K_u,alpha,beta,log_prop_u, tau=None):
-    """
-        Function that computes the accuracies of the GMM model (updated with one sample out)  with variables: idx + var
-        Inputs:
-            model: the GMM model
-            samples,labels: the training samples and the corresponding label
-            idx: the pool of selected variables
-            variable: the variable to be tested from the set of available variable
-            K_u: the initial prediction values computed with all the samples
-            alpha, beta and log_prop_u : constant that are computed outside of the loop to increased speed
-        Outputs:
-            loocv_temp : the loocv
-
-        Used in GMM.forward_selection()
-    """
-    # Get information on samples
-    n = samples.shape[0]
-
-    # Prepare pool of variables
-    id_t = list(idx)
-    id_t.append(var)
-    id_t.sort()
-
-    # Compute decision fct with all the samples with id_t
-    Kp = model.predict_gmm(samples,featIdx=id_t,tau=tau)[1]
-
-    # Initialization of the temporary loo accuracy
-    loocv_temp = 0.
-
-    for j in xrange(n):
-        c    = int(labels[j]-1)
-        Kloo = Kp[j,:] + K_u  # Initialization of the decision rule for sample "j" #--- Change for only not c---#
-
-        # Update of parameter of class c
-        m            = (model.nbSpl[c]*model.mean[c,id_t] - samples[j,id_t])*alpha[c] # Update the mean value
-        xb           = samples[j,id_t] - m # x centered
-        cov_u        = model.cov[c,id_t,:][:,id_t] - sp.outer(xb,xb)*alpha[c]*beta[c] # Update the covariance matrix
-        logdet,rcond = safe_logdet(cov_u)
-
-        if tau == None:
-            temp = mylstsq(cov_u,xb.T,rcond)
-            # temp = sp.dot(linalg.inv(cov_u), xb.T)
-        else:
-            temp = linalg.lstsq( sp.dot(cov_u,cov_u) + tau * sp.ones(len(id_t)) , sp.dot(cov_u,xb.T))[0]
-            # temp = sp.dot( linalg.inv( sp.dot(cov_u,cov_u) + tau * sp.ones(len(id_t)) ), sp.dot(cov_u,xb.T) )
-
-        Kloo[c] = logdet - 2*log_prop_u[c] + sp.vdot(xb,temp) # Compute the new decision rule
-        del cov_u,xb,m,c
-
-        yloo = sp.argmin(Kloo)+1
-        loocv_temp += float(yloo==labels[j]) # Check the correct/incorrect classification rule
-
-    return loocv_temp/n                                           # Compute loocv for variable
-
 def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx, tau=None, decisionMethod='linsyst'):
     """
         Function that computes the accuracy of the model_cv using the variables : idx +/- one of variables
@@ -312,7 +258,6 @@ def compute_divKL(direction, variables, model, idx, tau=None):
 
                     md  = (model.mean[i,var]-model.mean[j,var])
                     divKL[k] += 0.5*( invCov*model.cov[i,var,var] + md*invCov*md + sp.log(d[j,k]/d[i,k]) ) * model.prop[i]*model.prop[j]
-                    # divKL[k] += 0.5*( ( model.cov[i,var,var] - model.cov[j,var,var] )*( 1/model.cov[j,var,var] - 1/model.cov[i,var,var] ) + ( 1/model.cov[j,var,var] - 1/model.cov[i,var,var] ) * (md**2) ) * model.prop[i]*model.prop[j]
     else:
         if direction=='forward':
             invCov_maj = sp.empty((model.C,len(idx)+1,len(idx)+1))
@@ -350,7 +295,6 @@ def compute_divKL(direction, variables, model, idx, tau=None):
                     if i!=j:
                         md  = (model.mean[i,id_t]-model.mean[j,id_t])
                         divKL[k] += 0.5*( sp.trace(sp.dot( invCov_maj[j,:,:],model.cov[i,id_t,:][:,id_t] )) + sp.dot(md,sp.dot(invCov_maj[j,:,:],md.T)) + sp.log(d[j,k]/d[i,k]) ) * model.prop[i]*model.prop[j]
-                        # divKL[k] += 0.5*(sp.trace( sp.dot( model.cov[i,id_t,:][:,id_t] - model.cov[j,id_t,:][:,id_t], invCov_maj[j,:,:] - invCov_maj[i,:,:]) ) + sp.trace( sp.dot(invCov_maj[j,:,:] - invCov_maj[i,:,:], sp.dot(md.T,md) )) ) * model.prop[i]*model.prop[j]
 
     return divKL
 
@@ -564,8 +508,7 @@ class GMMFeaturesSelection(GMM):
 
                 tmp = float(self.cov[c,id_t,id_t])
                 temp = sp.dot([[tmp/(tmp**2 + tau)]], testSamples_c.T).T
-                # if logdet_maj.imag != 0.:
-                #     print logdet_maj, c, self.nbSpl[c], sp.diag(self.cov[c,:,:])
+
                 scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + logdet_maj - self.logprop[c]
             else:
                 if direction=='forward':
@@ -650,9 +593,6 @@ class GMMFeaturesSelection(GMM):
                 model_pre_cv[k].mean[c,:] = (self.nbSpl[c]*self.mean[c,:]-nk_c*mean_k)/(self.nbSpl[c]-nk_c)
                 model_pre_cv[k].cov[c,:]  = ((self.nbSpl[c]-1)*self.cov[c,:,:] - (nk_c-1)*cov_k - nk_c*self.nbSpl[c]/model_pre_cv[k].nbSpl[c]*sp.outer(self.mean[c,:]-mean_k,self.mean[c,:]-mean_k))/(model_pre_cv[k].nbSpl[c]-1)
 
-                if c==2 and k==0:
-                    classInd = sp.where(labels[trainInd]==(c+1))[0]
-                    print sp.divide(sp.diag( sp.cov(samples[trainInd,:][classInd,:],rowvar=None) ) - sp.diag(model_pre_cv[k].cov[c,:]) , sp.diag( sp.cov(samples[trainInd,:][classInd,:],rowvar=None) ))
                 del classInd,nk_c,mean_k,cov_k
 
             # Update proportion
@@ -916,7 +856,6 @@ class GMMFeaturesSelection(GMM):
 
                     bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
 
-                    # print "size ",bestVar.size,"new ",criterionVal[bestVar], "stored ",criterionBestVal[nbSelectFeat-2]
                     if criterionVal[bestVar] > criterionBestVal[nbSelectFeat-2]:
                         nbSelectFeat -= 1
                         variables = sp.sort( sp.append(variables,idx[bestVar]) )
@@ -930,68 +869,3 @@ class GMMFeaturesSelection(GMM):
 
         ## Return the final value
         return idx,criterionBestVal
-
-    # def forward_selection_loo(self, samples, labels, stopMethod='maxVar', delta=0.1, maxvar=0.2, ncpus=None, tau=None):
-    #     """
-    #         Function that selects the most discriminative variables according to a forward search using Leave-One-Out method
-    #         Inputs:
-    #             samples, labels:  the training samples and their labels
-    #             stopMethod: the stopping criterion. It can be either 'maxVar' to continue until maxvar % of the variables are selected or either 'variation' to continue until variation of criterion function are less than delta. Default: 'maxVar'
-    #             delta :  the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta. Default value 0.1%
-    #             maxvar: maximum number of extracted variables. Default value: 20% of the original number
-    #             ncpus: number of cpus to use for parallelization. Default: all
-    #             tau: regularization parameter. Default: None
-
-    #         Outputs:
-    #             idx: the selected variables
-    #             criterionBestVal: the criterion value estimated for each idx by loocv
-    #     """
-    #     # Get some information from the variables
-    #     n = samples.shape[0]      # Number of samples
-    #     if ncpus is None:
-    #         ncpus=mp.cpu_count() # Get the number of core
-
-    #     # Initialization
-    #     nbSelectFeat     = 0                       # Initialization of the counter
-    #     variables        = sp.arange(self.d)      # At step zero: d variables available
-    #     idx              = []                      # and no selected variable
-    #     criterionBestVal = []                      # list of the evolution the OA estimation
-    #     maxvar           = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
-
-    #     # Precompute the proportion and some others constants
-    #     log_prop_u = [sp.log((n*self.prop[c]-1.0)/(n-1.0)) for c in range(self.C)]
-    #     K_u        = 2*sp.log((n-1.0)/n)
-    #     beta       = [self.nbSpl[c]/(self.nbSpl[c]-1.0) for c in range(self.C)]# Constant for the rank one downdate
-    #     alpha      = [1/(self.nbSpl[c]-1) for c in range(self.C)]
-
-    #     # Start the forward search
-    #     while(nbSelectFeat<maxvar) and (variables.size!=0):
-    #         # Parallelize for each variable
-    #         pool = mp.Pool(processes=ncpus)
-    #         processes =  [pool.apply_async(compute_loocv_gmm,args=(var,self,samples,labels,idx,K_u,alpha,beta,log_prop_u,tau)) for var in variables]
-    #         pool.close()
-    #         pool.join()
-
-    #         # Compute mean criterion value over each processus
-    #         criterionVal = sp.zeros(variables.size)
-    #         for i,p in enumerate(processes):
-    #             criterionVal[i] += p.get()
-    #         del processes,pool
-
-    #         # Select the variable that provides the highest loocv
-    #         bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
-    #         criterionBestVal.append(criterionVal[bestVar])         # save criterion value
-
-    #         if nbSelectFeat==0:
-    #             idx.append(variables[bestVar])           # add the selected variables to the pool
-    #             variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
-    #         elif (stopMethod=='variation') and (((criterionBestVal[nbSelectFeat]-criterionBestVal[nbSelectFeat-1])/criterionBestVal[nbSelectFeat-1]*100) < delta):
-    #             criterionBestVal.pop()
-    #             break
-    #         else:
-    #             idx.append(variables[bestVar])
-    #             variables=sp.delete(variables,bestVar)
-    #         nbSelectFeat += 1
-
-    #     ## Return the final value
-    #     return idx,criterionBestVal
