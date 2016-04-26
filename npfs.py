@@ -342,6 +342,8 @@ class ConfusionMatrix(object):
         """
             Compute F1 Mean
         """
+        nl = sp.sum(self.confusion_matrix,axis=1)
+        nc = sp.sum(self.confusion_matrix,axis=0)
         return sp.sum(2*sp.diag(self.confusion_matrix) / (nl + nc))/float(self.n)
 
 ## Gaussian Mixture Model
