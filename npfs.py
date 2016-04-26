@@ -9,6 +9,7 @@ import scipy as sp
 from scipy import linalg
 import multiprocessing as mp
 import sklearn.cross_validation as cv
+from sklearn.metrics import confusion_matrix
 
 ## Utilitary functions
 def mylstsq(a, b, rcond):
@@ -315,26 +316,28 @@ class ConfusionMatrix(object):
         # Initialization
         self.n                = yp.size
         C                     = int(yr.max())
-        self.confusion_matrix = sp.zeros((C,C),dtype=int)
+        self.confusionMatrix  = confusion_matrix(yr,yp)
+        # self.confusionMatrix = sp.zeros((C,C),dtype=int)
 
-        # Compute confusion matrix
-        for c1 in xrange(C):
-            for c2 in xrange(C):
-                self.confusion_matrix[c1, c2] = sp.sum( (yp==(c1+1)) * (yr==(c2+1)) )
+        # # Compute confusion matrix
+        # for c1 in xrange(C):
+        #     tmp = (yp==(c1+1))
+        #     for c2 in xrange(C):
+        #         self.confusionMatrix[c1, c2] = sp.sum( tmp * (yr==(c2+1)) )
 
     def get_OA(self):
         """
             Compute overall accuracy
         """
-        return sp.sum(sp.diag(self.confusion_matrix))/float(self.n)
+        return sp.sum(sp.diag(self.confusionMatrix))/float(self.n)
 
     def get_kappa(self):
         """
             Compute Kappa
         """
-        nl = sp.sum(self.confusion_matrix,axis=1)
-        nc = sp.sum(self.confusion_matrix,axis=0)
-        OA = sp.sum(sp.diag(self.confusion_matrix))/float(self.n)
+        nl = sp.sum(self.confusionMatrix,axis=1)
+        nc = sp.sum(self.confusionMatrix,axis=0)
+        OA = sp.sum(sp.diag(self.confusionMatrix))/float(self.n)
 
         return ((self.n**2)*OA - sp.sum(nc*nl))/(self.n**2-sp.sum(nc*nl))
 
@@ -342,9 +345,9 @@ class ConfusionMatrix(object):
         """
             Compute F1 Mean
         """
-        nl = sp.sum(self.confusion_matrix,axis=1)
-        nc = sp.sum(self.confusion_matrix,axis=0)
-        return sp.sum(2*sp.diag(self.confusion_matrix) / (nl + nc))/float(self.n)
+        nl = sp.sum(self.confusionMatrix,axis=1)
+        nc = sp.sum(self.confusionMatrix,axis=0)
+        return sp.mean( sp.divide( 2.*sp.diag(self.confusionMatrix), (nl + nc)) )
 
 ## Gaussian Mixture Model
 
