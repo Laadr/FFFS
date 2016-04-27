@@ -86,6 +86,7 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
             for c in xrange(model_cv.C):
                 vp,Q,rcond    = model_cv.decomposition(model_cv.cov[c,idx,:][:,idx],tau)
                 invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
+                invCov[c,:,:] = linalg.inv(model_cv.cov[c,idx,:][:,idx])
                 logdet[c]     = sp.sum(sp.log(vp))
 
     for i,var in enumerate(variables):
@@ -295,7 +296,7 @@ def compute_divKL(direction, variables, model, idx, tau=None):
                 for j in xrange(model.C):
                     if i!=j:
                         md  = (model.mean[i,id_t]-model.mean[j,id_t])
-                        divKL[k] += 0.5*( sp.trace(sp.dot( invCov_maj[j,:,:],model.cov[i,id_t,:][:,id_t] )) + sp.dot(md,sp.dot(invCov_maj[j,:,:],md.T)) + sp.log(d[j,k]/d[i,k]) ) * model.prop[i]*model.prop[j]
+                        divKL[k] += 0.25*( sp.trace(sp.dot( invCov_maj[j,:,:],model.cov[i,id_t,:][:,id_t] )) + sp.dot(md,sp.dot(invCov_maj[j,:,:],md.T)) + sp.log(d[j,k]/d[i,k]) ) * model.prop[i]*model.prop[j]
 
     return divKL
 
@@ -499,6 +500,9 @@ class GMMFeaturesSelection(GMM):
                 predLabels: the class
                 scores:     the decision value for each class
         """
+        # Get machine precision
+        eps = sp.finfo(sp.float64).eps
+
         # Get information from the data
         nbTestSpl = testSamples.shape[0] # Number of testing samples
 
@@ -537,7 +541,10 @@ class GMMFeaturesSelection(GMM):
             else:
                 if direction=='forward':
                     d_feat     = self.cov[c,newFeat[1],newFeat[1]] + tau - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
-                    logdet_maj = sp.log(d_feat) + logdet[c]
+                    if d_feat > eps:
+                        logdet_maj = sp.log(d_feat) + logdet[c]
+                    else:
+                        logdet_maj = sp.log(eps) + logdet[c]
 
                     ind            = id_t.index(newFeat[1])
                     mask           = sp.ones(len(id_t), dtype=bool)
@@ -675,9 +682,6 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
             elif criterion == 'JM':
-                for k, (trainInd,testInd) in enumerate(kfold):
-                    compute_JM('forward',variables,model_pre_cv[k],idx,tau)
-                    break
                 processes =  [pool.apply_async(compute_JM, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
             elif criterion == 'divKL':
                 processes =  [pool.apply_async(compute_divKL, args=('forward',variables,model_pre_cv[k],idx,tau)) for k in xrange(len(kfold))]
