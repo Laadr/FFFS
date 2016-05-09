@@ -2,6 +2,7 @@
 import npfs as npfs
 import scipy as sp
 import time
+import HSIC_selection as hsic
 
 n     = 400 # Number of samples
 d     = 200 # Number of dimension
@@ -26,7 +27,7 @@ print "Accuracy without selection: ", float(t.size)/y.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('forward',x, y,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=2,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection('forward',x, y,criterion='JM', stopMethod='maxVar', delta=1.5, maxvar=6,nfold=2,balanced=True,tau=None,decisionMethod='inv')
 idx.sort()
 yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
@@ -38,44 +39,14 @@ print "Evolution of accuracy during selection: ", selectionOA
 print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var
 
-# # 5-CV
-# ts     = time.time()
-# idx,selectionOA = model.selection_cv('SFFS',x, y,criterion='accuracy', stopMethod='maxVar',delta=1.5, maxvar=6,nfold=5,balanced=True,tau=None,decisionMethod='inv')
-# idx.sort()
-# yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
-# j      = sp.where(yp.ravel()==y.ravel())[0]
-# OA     = (j.size*100.0)/y.size
-# print "\nResults for 5-CV with accuracy as criterion and backward selection\n"
-# print "Processing time: ", time.time()-ts
-# print "Selected features: ", idx
-# print "Evolution of accuracy during selection: ", selectionOA
-# print "Final accuracy: ", OA
-# print "Pertinent features (by construction): ", var
-
-# # 5-CV
-# ts     = time.time()
-# idx,selectionJM = model.forward_selection(x, y,criterion='JM',delta=1.5, maxvar=0.02,nfold=5,balanced=False,tau=0.0001)
-# idx.sort()
-# yp     = model.predict_gmm(x,featIdx=idx,tau=0.0001)[0]
-# j      = sp.where(yp.ravel()==y.ravel())[0]
-# OA     = (j.size*100.0)/y.size
-# print "\nResults for 5-CV with JM distance as criterion\n"
-# print "Processing time: ", time.time()-ts
-# print "Selected features: ", idx
-# print "Evolution of JM distance during selection: ", selectionJM
-# print "Final accuracy: ", OA
-# print "Pertinent features (by construction): ", var
-
-# # LOO
-# ts     = time.time()
-# idx,selectionOA = model.forward_selection_loo(x, y,delta=1.5, maxvar=0.02,tau=0.0001)
-# idx.sort()
-# yp     = model.predict_gmm(x,featIdx=idx,tau=0.0001)[0]
-# j      = sp.where(yp.ravel()==y.ravel())[0]
-# OA     = (j.size*100.0)/y.size
-# print "\nResults for LOO with accuracy as criterion\n"
-# print "Processing time: ", time.time()-ts
-# print "Selected features: ", idx
-# print "Evolution of accuracy during selection: ", selectionOA
-# print "Final accuracy: ", OA
-# print "Pertinent features (by construction): ", var
+# 5-CV
+ts     = time.time()
+idx    = HSIC_selection(samples,labels,maxvar=None)
+yp     = model.predict_gmm(x,featIdx=idx[-6:-1].sort(),tau=None)[0]
+j      = sp.where(yp.ravel()==y.ravel())[0]
+OA     = (j.size*100.0)/y.size
+print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
+print "Processing time: ", time.time()-ts
+print "Selected features: ", idx
+print "Final accuracy: ", OA
+print "Pertinent features (by construction): ", var
