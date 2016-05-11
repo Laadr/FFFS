@@ -89,6 +89,7 @@ for Nt,stratification in Nts:
 
                     ts = time.time()
                     idx,selectionOA = model.selection(method,xtrain,ytrain,criterion=criterion,stopMethod='maxVar',delta=1.5,maxvar=k,nfold=5,balanced=True,tau=None,decisionMethod='inv',random_state=1)
+                    print idx
                     processingTime[i,0] = time.time()-ts
 
                     idxs[i,:] = sp.asarray(idx)
@@ -102,7 +103,7 @@ for Nt,stratification in Nts:
                 selected_idx.append((idxs,OA,kappa,F1Mean,processingTime))
                 printFile.write("\nResults for 5-CV with accuracy as criterion and " + method + " selection with " + str(k) + " variables\n\n")
                 printFile.write("Processing time: "+str(sp.mean(processingTime))+"\n")
-                printFile.write("Selected features and accuracy: \n"+str(sp.append(idxs,OA,axis=1))+"\n")
+                printFile.write("Selected features and accuracy: \n"+str(idxs)+"\n")
 
                 meanOA    = sp.mean(OA)
                 meanKappa = sp.mean(kappa)
