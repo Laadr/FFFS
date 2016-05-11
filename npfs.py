@@ -424,7 +424,7 @@ class GMM(object):
         scores = sp.empty((nbTestSpl,self.C))
 
         # If not specified, predict with all features
-        if featIdx == None:
+        if featIdx is None:
             idx = range(testSamples.shape[1])
         else:
             idx = featIdx
@@ -433,7 +433,7 @@ class GMM(object):
             self.vp    = sp.empty((self.C,len(idx)))   # array of eigenvalues
             self.Q     = sp.empty((self.C,len(idx),len(idx))) # array of eigenvectors
 
-        if tau==None:
+        if tau is None:
             tau = 0
 
         # Start the prediction for each class
@@ -493,7 +493,7 @@ class GMMFeaturesSelection(GMM):
         scores = sp.empty((nbTestSpl,self.C))
 
         # If not specified, predict with all features
-        if featIdx == None:
+        if featIdx is None:
             featIdx = range(testSamples.shape[1])
 
         # New set of features
@@ -507,14 +507,14 @@ class GMMFeaturesSelection(GMM):
             id_t = list(featIdx)
             id_t.sort()
 
-        if tau==None:
+        if tau is None:
             tau=0
 
         # Start the prediction for each class
         for c in xrange(self.C):
             testSamples_c = testSamples[:,id_t] - self.mean[c,id_t]
 
-            if logdet==None and invCov==None:
+            if logdet is None and invCov is None:
                 logdet_maj = sp.sum(sp.log(self.cov[c,newFeat[1],newFeat[1]] + tau))
 
                 tmp = float(self.cov[c,id_t,id_t])

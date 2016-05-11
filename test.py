@@ -5,7 +5,7 @@ import time
 import HSIC_selection as hsic
 
 n     = 400 # Number of samples
-d     = 200 # Number of dimension
+d     = 20 # Number of dimension
 noise = 0.2
 sp.random.seed(10)
 var   = sp.random.random_integers(0,d-1,3)
@@ -27,9 +27,8 @@ print "Accuracy without selection: ", float(t.size)/y.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection('forward',x, y,criterion='JM', stopMethod='maxVar', delta=1.5, maxvar=6,nfold=2,balanced=True,tau=None,decisionMethod='inv')
-idx.sort()
-yp     = model.predict_gmm(x,featIdx=idx,tau=None)[0]
+idx,selectionOA = model.selection('forward',x, y,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=3,nfold=2,balanced=True,tau=None,decisionMethod='inv')
+yp     = model.predict_gmm(x,featIdx=idx.sort(),tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
 OA     = (j.size*100.0)/y.size
 print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
@@ -41,12 +40,13 @@ print "Pertinent features (by construction): ", var
 
 # 5-CV
 ts     = time.time()
-idx    = HSIC_selection(samples,labels,maxvar=None)
-yp     = model.predict_gmm(x,featIdx=idx[-6:-1].sort(),tau=None)[0]
+idx    = hsic.HSIC_selection(x,y,maxvar=None)
+print idx
+yp     = model.predict_gmm(x,featIdx=idx[-3:].sort(),tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
 OA     = (j.size*100.0)/y.size
 print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
 print "Processing time: ", time.time()-ts
-print "Selected features: ", idx
+print "Selected features: ", idx[-3:]
 print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var

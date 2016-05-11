@@ -5,14 +5,15 @@ import time
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_classification
 from sklearn.cross_validation import train_test_split
+import HSIC_selection as hsic
 
 
 n           = 400 # Number of samples
 d           = 30 # Number of dimension
-d_info      = 30   # Number of informatives features
+d_info      = 4   # Number of informatives features
 d_redundant = 0   # Number of redundant features
 
-x, y = make_classification(n_samples=n, n_features=d, n_redundant=d_redundant, n_informative=d_info,n_classes=12,n_clusters_per_class=1,random_state=10,shuffle=False)
+x, y = make_classification(n_samples=n, n_features=d, n_redundant=d_redundant, n_informative=d_info,n_classes=4,n_clusters_per_class=1,random_state=10,shuffle=False)
 y += 1
 # plt.scatter(x[:, 0], x[:, 1], marker='o', c=y)
 # plt.show()
@@ -40,7 +41,7 @@ print "Accuracy without selection: ", float(t.size)/ytest.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection_cv('forward',xtrain, ytrain,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=10,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection('forward',xtrain, ytrain,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 idx.sort()
 yp     = model.predict_gmm(xtest,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==ytest.ravel())[0]
@@ -52,9 +53,23 @@ print "Evolution of accuracy during selection: ", selectionOA
 print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var
 
+# 5-CV
+ts     = time.time()
+idx    = hsic.HSIC_selection(xtrain,ytrain,maxvar=None)
+print idx
+yp     = model.predict_gmm(xtest,featIdx=sp.sort(idx[-4:]),tau=None)[0]
+j      = sp.where(yp.ravel()==ytest.ravel())[0]
+OA     = (j.size*100.0)/ytest.size
+print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
+print "Processing time: ", time.time()-ts
+print "Selected features: ", sp.sort(idx[-4:])
+print "Final accuracy: ", OA
+print "Pertinent features (by construction): ", var
+
+
 # # 5-CV
 # ts     = time.time()
-# idx,selectionOA = model.selection_cv('SFFS',xtrain, ytrain,criterion='JM', stopMethod='maxVar',delta=1.5, maxvar=10,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+# idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='JM', stopMethod='maxVar',delta=1.5, maxvar=10,nfold=5,balanced=True,tau=None,decisionMethod='inv')
 # idx.sort()
 # yp     = model.predict_gmm(xtest,featIdx=idx,tau=None)[0]
 # j      = sp.where(yp.ravel()==ytest.ravel())[0]
