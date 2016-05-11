@@ -16,7 +16,7 @@ print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes
 
 
 # Nt             = 50 # Nb of samples per class in training set
-ntrial         = 30
+ntrial         = 5
 # criterion      = 'accuracy'
 # method         = 'SFFS' #'SFFS' or 'forward'
 # stratification = False
@@ -88,9 +88,7 @@ for Nt,stratification in Nts:
                     model.learn_gmm(xtrain, ytrain)
 
                     ts = time.time()
-                    print method,xtrain,ytrain,criterion
                     idx,selectionOA = model.selection(method,xtrain,ytrain,criterion=criterion,stopMethod='maxVar',delta=1.5,maxvar=k,nfold=5,balanced=True,tau=None,decisionMethod='inv',random_state=1)
-                    print idx
                     processingTime[i,0] = time.time()-ts
 
                     idxs[i,:] = sp.asarray(idx)
