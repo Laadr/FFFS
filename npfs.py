@@ -872,10 +872,10 @@ class GMMFeaturesSelection(GMM):
                         del processes,pool
 
                     elif criterion == 'JM':
-                        criterionVal = compute_JM('backward',sp.array(idx),model_pre_cv[k],idx,tau)
+                        criterionVal = compute_JM('backward',sp.array(idx),self,idx,tau)
 
                     elif criterion == 'divKL':
-                        criterionVal = compute_divKL('backward',sp.array(idx),model_pre_cv[k],idx,tau)
+                        criterionVal = compute_divKL('backward',sp.array(idx),self,idx,tau)
 
 
                     bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
