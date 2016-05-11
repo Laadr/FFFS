@@ -54,29 +54,14 @@ print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var
 
 # 5-CV
-ts     = time.time()
-idx    = hsic.HSIC_selection(xtrain,ytrain,maxvar=None)
-print idx
-yp     = model.predict_gmm(xtest,featIdx=sp.sort(idx[-4:]),tau=None)[0]
-j      = sp.where(yp.ravel()==ytest.ravel())[0]
-OA     = (j.size*100.0)/ytest.size
-print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
-print "Processing time: ", time.time()-ts
-print "Selected features: ", sp.sort(idx[-4:])
-print "Final accuracy: ", OA
-print "Pertinent features (by construction): ", var
-
-
-# # 5-CV
 # ts     = time.time()
-# idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='JM', stopMethod='maxVar',delta=1.5, maxvar=10,nfold=5,balanced=True,tau=None,decisionMethod='inv')
-# idx.sort()
-# yp     = model.predict_gmm(xtest,featIdx=idx,tau=None)[0]
+# idx    = hsic.HSIC_selection(xtrain,ytrain,maxvar=None)
+# print idx
+# yp     = model.predict_gmm(xtest,featIdx=sp.sort(idx[-4:]),tau=None)[0]
 # j      = sp.where(yp.ravel()==ytest.ravel())[0]
 # OA     = (j.size*100.0)/ytest.size
-# print "\nResults for 5-CV with accuracy as criterion and backward selection\n"
+# print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
 # print "Processing time: ", time.time()-ts
-# print "Selected features: ", idx
-# print "Evolution of accuracy during selection: ", selectionOA
+# print "Selected features: ", sp.sort(idx[-4:])
 # print "Final accuracy: ", OA
 # print "Pertinent features (by construction): ", var
