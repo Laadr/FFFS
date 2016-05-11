@@ -39,14 +39,14 @@ print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var
 
 # 5-CV
-ts     = time.time()
-idx    = hsic.HSIC_selection(x,y,maxvar=None)
-print idx
-yp     = model.predict_gmm(x,featIdx=idx[-3:].sort(),tau=None)[0]
-j      = sp.where(yp.ravel()==y.ravel())[0]
-OA     = (j.size*100.0)/y.size
-print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
-print "Processing time: ", time.time()-ts
-print "Selected features: ", idx[-3:]
-print "Final accuracy: ", OA
-print "Pertinent features (by construction): ", var
+# ts     = time.time()
+# idx    = hsic.HSIC_selection(x,y,maxvar=None)
+# print idx
+# yp     = model.predict_gmm(x,featIdx=idx[-3:].sort(),tau=None)[0]
+# j      = sp.where(yp.ravel()==y.ravel())[0]
+# OA     = (j.size*100.0)/y.size
+# print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
+# print "Processing time: ", time.time()-ts
+# print "Selected features: ", idx[-3:]
+# print "Final accuracy: ", OA
+# print "Pertinent features (by construction): ", var
