@@ -22,7 +22,7 @@ ntrial         = 30
 # stratification = False
 
 Nts        = [(50,False), (100,False), (200,False), (400,False), (0.1,True), (0.3,True)] # Nb of samples per class in training set
-methods    = ['SFFS', 'forward']
+methods    = ['forward','SFFS']
 criterions = ['accuracy', 'kappa', 'F1Mean', 'JM', 'divKL']
 
 for Nt,stratification in Nts:
@@ -62,7 +62,7 @@ for Nt,stratification in Nts:
 
             selected_idx = []
             confMatrix = npfs.ConfusionMatrix()
-            for k in xrange(5,10):
+            for k in xrange(5,8):
                 # 5-CV
                 processingTime  = sp.zeros((ntrial,1))
                 OA,kappa,F1Mean = sp.zeros((ntrial,1)), sp.zeros((ntrial,1)), sp.zeros((ntrial,1))
@@ -72,13 +72,13 @@ for Nt,stratification in Nts:
                     if stratification:
                         xtrain, xtest, ytrain, ytest = train_test_split(X, y, train_size=Nt, random_state=1, stratify=y)
                     else:
-                        sp.random.seed(0)
+                        sp.random.seed(i)
                         xtrain = sp.empty((0,X.shape[1]))
                         xtest  = sp.empty((0,X.shape[1]))
                         ytrain = sp.empty((0,1))
                         ytest  = sp.empty((0,1))
-                        for i in xrange(C):
-                            t  = sp.where((i+1)==y)[0]
+                        for j in xrange(C):
+                            t  = sp.where((j+1)==y)[0]
                             nc = t.size
                             rp = sp.random.permutation(nc)
                             xtrain = sp.concatenate( (X[t[rp[:Nt]],:], xtrain) )
@@ -88,6 +88,7 @@ for Nt,stratification in Nts:
                     model.learn_gmm(xtrain, ytrain)
 
                     ts = time.time()
+                    print method,xtrain,ytrain,criterion
                     idx,selectionOA = model.selection(method,xtrain,ytrain,criterion=criterion,stopMethod='maxVar',delta=1.5,maxvar=k,nfold=5,balanced=True,tau=None,decisionMethod='inv',random_state=1)
                     print idx
                     processingTime[i,0] = time.time()-ts
