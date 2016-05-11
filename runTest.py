@@ -30,8 +30,10 @@ for Nt,stratification in Nts:
         for method in methods:
 
             if stratification:
+                filename = data_name+'_'+method+'_spls_'+str(Nt)+'_stratified_trials_'+str(ntrial)+'_'+criterion
                 xtrain, xtest, ytrain, ytest = train_test_split(X, y, train_size=Nt, random_state=1, stratify=y)
             else:
+                filename = data_name+'_'+method+'_spls_'+str(Nt)+'_equalized_trials_'+str(ntrial)+'_'+criterion
                 sp.random.seed(0)
                 xtrain = sp.empty((0,X.shape[1]))
                 xtest  = sp.empty((0,X.shape[1]))
@@ -46,14 +48,16 @@ for Nt,stratification in Nts:
                     ytrain = sp.concatenate( (y[t[rp[:Nt]]], ytrain) )
                     ytest  = sp.concatenate( (y[t[rp[Nt:]]], ytest) )
 
-            print "Nb of training samples: ",ytrain.shape[0]," Nb of test samples: ",ytest.shape[0],"\n"
+            printFile = open('Output/'+filename+'.txt','w')
+
+            printFile.write("Nb of training samples: "+str(ytrain.shape[0])+" Nb of test samples: "+str(ytest.shape[0])+"\n\n")
 
             model    = npfs.GMMFeaturesSelection()
             model.learn_gmm(xtrain, ytrain)
-            print "Proportion of classes (%): ", 100*model.prop.ravel(), "\n"
+            printFile.write("Proportion of classes (%): "+str(100*model.prop.ravel())+"\n\n")
             yp       = model.predict_gmm(xtest,tau=None,decisionMethod='inv')[0]
             t        = sp.where(yp.ravel()==ytest.ravel())[0]
-            print "Accuracy without selection: ", float(t.size)/ytest.size
+            printFile.write("Accuracy without selection: "+str(float(t.size)/ytest.size)+"\n")
 
 
             selected_idx = []
@@ -96,24 +100,19 @@ for Nt,stratification in Nts:
                     F1Mean[i,0] = confMatrix.get_F1Mean()
 
                 selected_idx.append((idxs,OA,kappa,F1Mean,processingTime))
-                print "\nResults for 5-CV with accuracy as criterion and " + method + " selection with " + str(k) + " variables\n"
-                print "Processing time: ", sp.mean(processingTime)
-                print "Selected features and accuracy: \n", sp.append(idxs,OA,axis=1)
+                printFile.write("\nResults for 5-CV with accuracy as criterion and " + method + " selection with " + str(k) + " variables\n\n")
+                printFile.write("Processing time: "+str(sp.mean(processingTime))+"\n")
+                printFile.write("Selected features and accuracy: \n"+str(sp.append(idxs,OA,axis=1))+"\n")
 
                 meanOA    = sp.mean(OA)
                 meanKappa = sp.mean(kappa)
                 meanF1    = sp.mean(F1Mean)
-                print "Final accuracy: ", meanOA, " (std deviation: ", sp.sqrt( sp.mean(sp.square( (OA-meanOA) )) ), ")"
-                print "Final kappa: ", meanKappa, " (std deviation: ", sp.sqrt( sp.mean(sp.square( (kappa-meanKappa) )) ), ")"
-                print "Final F1-score mean: ", meanF1, " (std deviation: ", sp.sqrt( sp.mean(sp.square( (F1Mean-meanF1) )) ), ")"
+                printFile.write("Final accuracy: "+str(meanOA)+" (std deviation: "+str(sp.sqrt( sp.mean(sp.square( (OA-meanOA) )) ) )+")\n")
+                printFile.write("Final kappa: "+str(meanKappa)+" (std deviation: "+str(sp.sqrt( sp.mean(sp.square( (kappa-meanKappa) )) ) )+")\n")
+                printFile.write("Final F1-score mean: "+str(meanF1)+" (std deviation: "+str(sp.sqrt( sp.mean(sp.square( (F1Mean-meanF1) )) ) )+")\n")
 
+            printFile.close()
 
-            if stratification:
-                filename = data_name+'_'+method+'_spls_'+str(Nt)+'_stratified_trials_'+str(ntrial)+'_'+criterion
-            else:
-                filename = data_name+'_'+method+'_spls_'+str(Nt)+'_equalized_trials_'+str(ntrial)+'_'+criterion
-
-
-            f = open(filename+'.pckl', 'w')
+            f = open('Results/'+filename+'.pckl', 'w')
             pickle.dump(selected_idx, f)
             f.close()
