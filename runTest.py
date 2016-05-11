@@ -23,7 +23,7 @@ ntrial         = 5
 
 Nts        = [(50,False), (100,False), (200,False), (400,False), (0.1,True), (0.3,True)] # Nb of samples per class in training set
 methods    = ['forward','SFFS']
-criterions = ['accuracy', 'kappa', 'F1Mean', 'JM', 'divKL']
+criterions = ['JM', 'divKL', 'accuracy', 'kappa', 'F1Mean']
 
 for Nt,stratification in Nts:
     for criterion in criterions:

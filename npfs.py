@@ -826,10 +826,10 @@ class GMMFeaturesSelection(GMM):
                 del processes,pool
 
             elif criterion == 'JM':
-                criterionVal = compute_JM('forward',variables,model_pre_cv[k],idx,tau)
+                criterionVal = compute_JM('forward',variables,self,idx,tau)
 
             elif criterion == 'divKL':
-                criterionVal = compute_divKL('forward',variables,model_pre_cv[k],idx,tau)
+                criterionVal = compute_divKL('forward',variables,self,idx,tau)
 
 
             # Select the variable that provides the highest criterion
