@@ -229,7 +229,7 @@ def compute_divKL(direction, variables, model, idx, tau=None):
                 if direction=='forward':
                     maj_cst = model.cov[c,var,var] + tau - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) )
                 elif direction=='backward':
-                    maj_cst     = 1/float( invCov[k,k] )
+                    maj_cst     = 1/float( invCov[c,k,k] )
                 d[c,k]  = maj_cst * det
         del vp,Q,rcond,maj_cst
 
