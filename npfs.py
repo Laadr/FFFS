@@ -116,7 +116,7 @@ def compute_JM(direction, variables, model, idx, tau=None):
     idx = list(idx)
     idx.sort()
 
-    if tau==None:
+    if tau is None:
         tau=0.
 
     # Compute all possible update of det cov(idx)
@@ -211,7 +211,7 @@ def compute_divKL(direction, variables, model, idx, tau=None):
     idx = list(idx)
     idx.sort()
 
-    if tau==None:
+    if tau is None:
         tau=0.
 
     if len(idx)==0:
@@ -355,7 +355,7 @@ class GMM(object):
         else:
             rcond = vp.min()/vp.max()
 
-        if tau == None:
+        if tau is None:
             vp = sp.where(vp<eps,eps,vp)
         else:
             vp += tau
