@@ -117,7 +117,7 @@ def compute_JM(direction, variables, model, idx, tau=None):
     idx.sort()
 
     if tau==None:
-        tau=0
+        tau=0.
 
     # Compute all possible update of det cov(idx)
     if len(idx)==0:
@@ -206,43 +206,30 @@ def compute_divKL(direction, variables, model, idx, tau=None):
     # Initialization
     divKL  = sp.zeros(variables.size)
     invCov = sp.empty((model.C,len(idx),len(idx)))
-    d  = sp.zeros((model.C,variables.size))
 
     # Cast and sort index of selected variables
     idx = list(idx)
     idx.sort()
 
     if tau==None:
-        tau=0
-
-    # Compute invcov de idx
-    if len(idx)==0:
-        for c in xrange(model.C):
-            for k,var in enumerate(variables):
-                d[c,k] = model.cov[c,var,var]
-    else:
-        for c in xrange(model.C):
-            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx],tau)
-            det = sp.prod(vp)
-            invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
-            for k,var in enumerate(variables):
-                if direction=='forward':
-                    maj_cst = model.cov[c,var,var] + tau - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) )
-                elif direction=='backward':
-                    maj_cst     = 1/float( invCov[c,k,k] )
-                d[c,k]  = maj_cst * det
-        del vp,Q,rcond,maj_cst
-
+        tau=0.
 
     if len(idx)==0:
         for k,var in enumerate(variables):
             for i in xrange(model.C):
+                invCovI = 1/float(model.cov[i,var,var])
                 for j in xrange(i+1,model.C):
-                    invCov = 1/float(model.cov[j,var,var])
+                    invCovJ = 1/float(model.cov[j,var,var])
 
                     md  = (model.mean[i,var]-model.mean[j,var])
-                    divKL[k] += 0.5*( invCov*model.cov[i,var,var] + md*invCov*md + sp.log(d[j,k]/d[i,k]) ) * model.prop[i]*model.prop[j]
+                    divKL[k] += 0.25*( invCovI*model.cov[j,var,var] + invCovJ*model.cov[i,var,var] + md*(invCovI + invCovJ)*md ) * model.prop[i]*model.prop[j]
     else:
+        # Compute invcov de idx
+        for c in xrange(model.C):
+            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx],tau)
+            invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
+        del vp,Q,rcond
+
         if direction=='forward':
             invCov_maj = sp.empty((model.C,len(idx)+1,len(idx)+1))
         elif direction=='backward':
@@ -260,7 +247,7 @@ def compute_divKL(direction, variables, model, idx, tau=None):
                 id_t    = list(idx)
                 mask    = sp.ones(len(idx), dtype=bool)
                 mask[k] = False
-                id_t    = id_t[mask]
+                del id_t[k]
 
             for c in xrange(model.C):
                 if direction=='forward':
@@ -275,10 +262,9 @@ def compute_divKL(direction, variables, model, idx, tau=None):
 
 
             for i in xrange(model.C):
-                for j in xrange(model.C):
-                    if i!=j:
-                        md  = (model.mean[i,id_t]-model.mean[j,id_t])
-                        divKL[k] += 0.25*( sp.trace(sp.dot( invCov_maj[j,:,:],model.cov[i,id_t,:][:,id_t] )) + sp.dot(md,sp.dot(invCov_maj[j,:,:],md.T)) + sp.log(d[j,k]/d[i,k]) ) * model.prop[i]*model.prop[j]
+                for j in xrange(i+1,model.C):
+                    md  = (model.mean[i,id_t]-model.mean[j,id_t])
+                    divKL[k] += 0.25*( sp.trace( sp.dot( invCov_maj[j,:,:],model.cov[i,id_t,:][:,id_t] ) + sp.dot( invCov_maj[i,:,:],model.cov[j,id_t,:][:,id_t] ) ) + sp.dot(md,sp.dot(invCov_maj[j,:,:]+invCov_maj[i,:,:],md.T)) ) * model.prop[i]*model.prop[j]
 
     return divKL
 
