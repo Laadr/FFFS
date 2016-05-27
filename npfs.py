@@ -34,7 +34,7 @@ def mylstsq(a, b, rcond):
         x = linalg.lstsq(a,b)[0]
     return x
 
-def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx, tau=None, decisionMethod='linsyst'):
+def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx, decisionMethod='linsyst'):
     """
         Function that computes the accuracy of the model_cv using the variables : idx +/- one of variables
         Inputs:
@@ -44,7 +44,6 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
             model_cv:       the model build with all the variables
             samples,labels: the samples/label for testing
             idx:            the pool of retained variables
-            tau:            regularization parameter
             decisionMethod: method to compute main term of decision function 'linsyst' or 'inv'. Default: 'linsyst'
         Output:
             metric: the estimated metric
@@ -66,14 +65,14 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
             logdet     = sp.empty((model_cv.C))
 
             for c in xrange(model_cv.C):
-                vp,Q,rcond    = model_cv.decomposition(model_cv.cov[c,idx,:][:,idx],tau)
+                vp,Q,rcond    = model_cv.decomposition(model_cv.cov[c,idx,:][:,idx])
                 invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
                 invCov[c,:,:] = linalg.inv(model_cv.cov[c,idx,:][:,idx])
                 logdet[c]     = sp.sum(sp.log(vp))
 
     for i,var in enumerate(variables):
         if decisionMethod=='inv':
-            predLabels = model_cv.predict_gmm_maj(direction,samples,invCov,logdet,(i,var),featIdx=idx,tau=tau)[0]
+            predLabels = model_cv.predict_gmm_maj(direction,samples,invCov,logdet,(i,var),featIdx=idx)[0]
         else:
             if direction=='forward':
                 id_t = list(idx)
@@ -83,7 +82,7 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
                 mask    = sp.ones(len(variables), dtype=bool)
                 mask[i] = False
                 id_t    = list(idx[mask])
-            predLabels = model_cv.predict_gmm(samples,featIdx=id_t,tau=tau,decisionMethod=decisionMethod)[0] # Use the marginalization properties to update the model for each tuple of variables
+            predLabels = model_cv.predict_gmm(samples,featIdx=id_t,decisionMethod=decisionMethod)[0] # Use the marginalization properties to update the model for each tuple of variables
             del id_t
 
         confMatrix.compute_confusion_matrix(predLabels,labels)
@@ -96,7 +95,7 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
 
     return metric
 
-def compute_JM(direction, variables, model, idx, tau=None):
+def compute_JM(direction, variables, model, idx):
     """
         Function that computes the Jeffries–Matusita distance of the model_cv using the variables : idx +/- one of variables
         Inputs:
@@ -116,9 +115,6 @@ def compute_JM(direction, variables, model, idx, tau=None):
     idx = list(idx)
     idx.sort()
 
-    if tau is None:
-        tau=0.
-
     # Compute all possible update of det cov(idx)
     if len(idx)==0:
         for c in xrange(model.C):
@@ -126,12 +122,12 @@ def compute_JM(direction, variables, model, idx, tau=None):
                 d[c,k] = model.cov[c,var,var]
     else:
         for c in xrange(model.C):
-            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx],tau)
+            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx])
             det = sp.prod(vp)
             invCov = sp.dot(Q,((1/vp)*Q).T)
             for k,var in enumerate(variables):
                 if direction=='forward':
-                    maj_cst = model.cov[c,var,var] + tau - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov,model.cov[c,var,:][idx].T) )
+                    maj_cst = model.cov[c,var,var] - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov,model.cov[c,var,:][idx].T) )
                 elif direction=='backward':
                     maj_cst = 1/float( invCov[k,k] )
                 d[c,k]  = maj_cst * det
@@ -154,7 +150,7 @@ def compute_JM(direction, variables, model, idx, tau=None):
         for i in xrange(model.C):
             for j in xrange(i+1,model.C):
                 cs  = (model.cov[i,idx,:][:,idx]+model.cov[j,idx,:][:,idx])/2
-                vp,Q,rcond = model.decomposition(cs,tau)
+                vp,Q,rcond = model.decomposition(cs)
                 invCov = sp.dot(Q,((1/vp)*Q).T)
                 det = sp.prod(vp)
 
@@ -168,7 +164,7 @@ def compute_JM(direction, variables, model, idx, tau=None):
 
                         c1 = (model.cov[i,var,var]+model.cov[j,var,var])/2
                         c2 = (model.cov[i,var,:][idx]+model.cov[j,var,:][idx])/2
-                        maj_cst = c1 + tau - sp.dot(c2, sp.dot(invCov,c2.T) )
+                        maj_cst = c1 - sp.dot(c2, sp.dot(invCov,c2.T) )
                         dij = maj_cst * det
 
                         md_new  = (model.mean[i,id_t]-model.mean[j,id_t])
@@ -191,7 +187,7 @@ def compute_JM(direction, variables, model, idx, tau=None):
 
     return JM
 
-def compute_divKL(direction, variables, model, idx, tau=None):
+def compute_divKL(direction, variables, model, idx):
     """
         Function that computes the  Kullback–Leibler divergence of the model_cv using the variables : idx +/- one of variables
         Inputs:
@@ -211,9 +207,6 @@ def compute_divKL(direction, variables, model, idx, tau=None):
     idx = list(idx)
     idx.sort()
 
-    if tau is None:
-        tau=0.
-
     if len(idx)==0:
         for k,var in enumerate(variables):
             for i in xrange(model.C):
@@ -226,7 +219,7 @@ def compute_divKL(direction, variables, model, idx, tau=None):
     else:
         # Compute invcov de idx
         for c in xrange(model.C):
-            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx],tau)
+            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx])
             invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
         del vp,Q,rcond
 
@@ -251,7 +244,7 @@ def compute_divKL(direction, variables, model, idx, tau=None):
 
             for c in xrange(model.C):
                 if direction=='forward':
-                    maj_cst = model.cov[c,var,var] + tau - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) )
+                    maj_cst = model.cov[c,var,var] - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) )
                     invCov_maj[c,mask,:][:,mask] = invCov[c,:,:] + 1/float(maj_cst) * sp.dot( sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) , sp.dot(model.cov[c,var,:][idx],invCov[c,:,:]) )
                     invCov_maj[c,ind,mask]  = - 1/float(maj_cst) * sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T)
                     invCov_maj[c,mask,ind]  = - 1/float(maj_cst) * sp.dot(model.cov[c,var,:][idx],invCov[c,:,:])
@@ -334,12 +327,11 @@ class GMM(object):
         self.vp    = sp.empty((C,d))   # array of eigenvalues
         self.Q     = sp.empty((C,d,d)) # array of eigenvectors
 
-    def decomposition(self, M, tau=None):
+    def decomposition(self, M):
         """
             Compute the decompostion of symmetric matrix
             Inputs:
                 M:   matrix to decompose
-                tau: regularisation term added to eigenvalues
             Outputs:
                 vp:    eigenvalues
                 Q:     eigenvectors
@@ -355,10 +347,7 @@ class GMM(object):
         else:
             rcond = vp.min()/vp.max()
 
-        if tau is None:
-            vp = sp.where(vp<eps,eps,vp)
-        else:
-            vp += tau
+        vp = sp.where(vp<eps,eps,vp)
 
         return vp,Q,rcond
 
@@ -427,7 +416,7 @@ class GMM(object):
             testSamples_c = testSamples[:,idx] - self.mean[c,idx]
 
             if self.idxDecomp != idx:
-                self.vp[c,:],self.Q[c,:,:],rcond = self.decomposition(self.cov[c,idx,:][:,idx],None)
+                self.vp[c,:],self.Q[c,:,:],rcond = self.decomposition(self.cov[c,idx,:][:,idx])
 
             regvp = self.vp[c,:] + tau
             rcond = regvp.min()/regvp.max()
@@ -447,6 +436,7 @@ class GMM(object):
 
         # Assign the label to the minimum value of scores
         predLabels = sp.argmin(scores,1)+1
+
         return predLabels,scores
 
 
@@ -455,7 +445,7 @@ class GMMFeaturesSelection(GMM):
     def __init__(self, d=0, C=0):
         super(GMMFeaturesSelection, self).__init__(d,C)
 
-    def predict_gmm_maj(self, direction, testSamples, invCov, logdet, newFeat, featIdx=None, tau=None):
+    def predict_gmm_maj(self, direction, testSamples, invCov, logdet, newFeat, featIdx=None):
         """
             Function that predict the label for testSamples using the learned model (with an update method of the inverte covariance matrix)
             Inputs:
@@ -464,7 +454,6 @@ class GMMFeaturesSelection(GMM):
                 invCov:      inverte of covariance matrix of already selected features
                 newFeat:     couple (index,feature) to add or delete
                 featIdx:     indices of features to use for classification
-                tau:         regularization parameter
             Outputs:
                 predLabels: the class
                 scores:     the decision value for each class
@@ -493,23 +482,21 @@ class GMMFeaturesSelection(GMM):
             id_t = list(featIdx)
             id_t.sort()
 
-        if tau is None:
-            tau=0
-
         # Start the prediction for each class
         for c in xrange(self.C):
             testSamples_c = testSamples[:,id_t] - self.mean[c,id_t]
 
             if logdet is None and invCov is None:
-                logdet_maj = sp.sum(sp.log(self.cov[c,newFeat[1],newFeat[1]] + tau))
+                logdet_maj = sp.sum(sp.log(self.cov[c,newFeat[1],newFeat[1]]))
 
                 tmp = float(self.cov[c,id_t,id_t])
-                temp = sp.dot([[tmp/(tmp**2 + tau)]], testSamples_c.T).T
+                temp = sp.dot([[1/tmp]], testSamples_c.T).T
+                print tmp
 
                 scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + logdet_maj - self.logprop[c]
             else:
                 if direction=='forward':
-                    d_feat     = self.cov[c,newFeat[1],newFeat[1]] + tau - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
+                    d_feat     = self.cov[c,newFeat[1],newFeat[1]] - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
                     if d_feat > eps:
                         logdet_maj = sp.log(d_feat) + logdet[c]
                     else:
@@ -543,7 +530,7 @@ class GMMFeaturesSelection(GMM):
         predLabels = sp.argmin(scores,1)+1
         return predLabels,scores
 
-    def selection(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, tau=None, ncpus=None, decisionMethod='linsyst', random_state=1):
+    def selection(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, ncpus=None, decisionMethod='linsyst', random_state=1):
         """
             Function that selects the most discriminative variables according to a given search method
             Inputs:
@@ -555,7 +542,6 @@ class GMMFeaturesSelection(GMM):
                 maxvar:          maximum number of extracted variables. Default value: 20% of the original number
                 nfold:           number of folds for the cross-validation. Default value: 5
                 balanced:        If true, same proportion of each class in each fold. Default: True
-                tau:             regularization term added to eigenvalues. Default: None
                 ncpus:           number of cpus to use for parallelization. Default: all
                 decisionMethod:  'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
 
@@ -601,8 +587,7 @@ class GMMFeaturesSelection(GMM):
                 model_pre_cv[k].prop = model_pre_cv[k].nbSpl/(n-nk)
 
                 # Precompute cst
-                if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
-                    model_pre_cv[k].logprop = 2*sp.log(model_pre_cv[k].prop)
+                model_pre_cv[k].logprop = 2*sp.log(model_pre_cv[k].prop)
 
                 del testSamples,testLabels,nk
         else:
@@ -610,13 +595,13 @@ class GMMFeaturesSelection(GMM):
             model_pre_cv = None
 
         if direction == 'forward':
-            return self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod)
+            return self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
         elif direction == 'backward':
-            return self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod)
+            return self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
         elif direction == 'SFFS':
-            return self.floating_forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod)
+            return self.floating_forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
 
-    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod):
+    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
         """
             Function that selects the most discriminative variables according to a forward search
             Inputs:
@@ -627,7 +612,6 @@ class GMMFeaturesSelection(GMM):
                 maxvar:          maximum number of extracted variables.
                 kfold:           k-folds for the cross-validation.
                 model_pre_cv:    GMM models for each CV.
-                tau:             regularization term added to eigenvalues. Default: None
                 ncpus:           number of cpus to use for parallelization.
                 decisionMethod:  'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
 
@@ -655,7 +639,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
                 pool.close()
                 pool.join()
 
@@ -667,10 +651,10 @@ class GMMFeaturesSelection(GMM):
                 del processes,pool
 
             elif criterion == 'JM':
-                criterionVal =  compute_JM('forward',variables,self,idx,tau)
+                criterionVal =  compute_JM('forward',variables,self,idx)
 
             elif criterion == 'divKL':
-                criterionVal =  compute_divKL('forward',variables,self,idx,tau)
+                criterionVal =  compute_divKL('forward',variables,self,idx)
 
 
             # Select the variable that provides the highest loocv
@@ -691,7 +675,7 @@ class GMMFeaturesSelection(GMM):
         ## Return the final value
         return idx,criterionBestVal
 
-    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod):
+    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
         """
             Function that selects the most discriminative variables according to a backward search
             Inputs:
@@ -702,7 +686,6 @@ class GMMFeaturesSelection(GMM):
                 maxvar:           maximum number of extracted variables.
                 kfold:            k-folds for the cross-validation.
                 model_pre_cv:     GMM models for each CV.
-                tau:              regularization term added to eigenvalues. Default: None
                 ncpus:            number of cpus to use for parallelization.
                 decisionMethod:   'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
             Outputs:
@@ -727,7 +710,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
                 pool.close()
                 pool.join()
 
@@ -739,10 +722,10 @@ class GMMFeaturesSelection(GMM):
                 del processes,pool
 
             elif criterion == 'JM':
-                criterionVal = compute_JM('backward',idx,self,idx,tau)
+                criterionVal = compute_JM('backward',idx,self,idx)
 
             elif criterion == 'divKL':
-                criterionVal = compute_divKL('backward',idx,self,idx,tau)
+                criterionVal = compute_divKL('backward',idx,self,idx)
 
 
             # Select the variable that provides the highest loocv
@@ -760,7 +743,7 @@ class GMMFeaturesSelection(GMM):
         ## Return the final value
         return idx,criterionBestVal
 
-    def floating_forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, tau, ncpus, decisionMethod):
+    def floating_forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
         """
             Function that selects the most discriminative variables according to a floating forward search
             Inputs:
@@ -771,7 +754,6 @@ class GMMFeaturesSelection(GMM):
                 maxvar:           maximum number of extracted variables.
                 kfold:            k-folds for the cross-validation.
                 model_pre_cv:     GMM models for each CV.
-                tau:              regularization term added to eigenvalues. Default: None
                 ncpus:            number of cpus to use for parallelization.
                 decisionMethod:   'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
             Outputs:
@@ -800,7 +782,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
                 pool.close()
                 pool.join()
 
@@ -812,10 +794,10 @@ class GMMFeaturesSelection(GMM):
                 del processes,pool
 
             elif criterion == 'JM':
-                criterionVal = compute_JM('forward',variables,self,idx,tau)
+                criterionVal = compute_JM('forward',variables,self,idx)
 
             elif criterion == 'divKL':
-                criterionVal = compute_divKL('forward',variables,self,idx,tau)
+                criterionVal = compute_divKL('forward',variables,self,idx)
 
 
             # Select the variable that provides the highest criterion
@@ -846,7 +828,7 @@ class GMMFeaturesSelection(GMM):
                     if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                         # Parallelize cv
                         pool = mp.Pool(processes=ncpus)
-                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx,tau,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
                         pool.close()
                         pool.join()
 
@@ -858,10 +840,10 @@ class GMMFeaturesSelection(GMM):
                         del processes,pool
 
                     elif criterion == 'JM':
-                        criterionVal = compute_JM('backward',sp.array(idx),self,idx,tau)
+                        criterionVal = compute_JM('backward',sp.array(idx),self,idx)
 
                     elif criterion == 'divKL':
-                        criterionVal = compute_divKL('backward',sp.array(idx),self,idx,tau)
+                        criterionVal = compute_divKL('backward',sp.array(idx),self,idx)
 
 
                     bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values

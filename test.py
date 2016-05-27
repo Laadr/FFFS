@@ -27,7 +27,7 @@ print "Accuracy without selection: ", float(t.size)/y.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection('forward',x, y,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=3,nfold=2,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection('forward',x, y,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=3,nfold=2,balanced=True,decisionMethod='inv')
 yp     = model.predict_gmm(x,featIdx=idx.sort(),tau=None)[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
 OA     = (j.size*100.0)/y.size

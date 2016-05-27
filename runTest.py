@@ -88,7 +88,7 @@ for Nt,stratification in Nts:
                     model.learn_gmm(xtrain, ytrain)
 
                     ts = time.time()
-                    idx,selectionOA = model.selection(method,xtrain,ytrain,criterion=criterion,stopMethod='maxVar',delta=1.5,maxvar=k,nfold=5,balanced=True,tau=None,decisionMethod='inv',random_state=1)
+                    idx,selectionOA = model.selection(method,xtrain,ytrain,criterion=criterion,stopMethod='maxVar',delta=1.5,maxvar=k,nfold=5,balanced=True,decisionMethod='inv',random_state=1)
                     processingTime[i,0] = time.time()-ts
 
                     idxs[i,:] = sp.asarray(idx)

@@ -41,7 +41,7 @@ print "Accuracy without selection: ", float(t.size)/ytest.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='divKL', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=5,balanced=True,tau=None,decisionMethod='inv')
+idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=5,balanced=True,decisionMethod='inv')
 idx.sort()
 yp     = model.predict_gmm(xtest,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==ytest.ravel())[0]
@@ -49,19 +49,18 @@ OA     = (j.size*100.0)/ytest.size
 print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
 print "Processing time: ", time.time()-ts
 print "Selected features: ", idx
-print "Evolution of accuracy during selection: ", selectionOA
+# print "Evolution of accuracy during selection: ", selectionOA
 print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var
 
 # 5-CV
-# ts     = time.time()
-# idx    = hsic.HSIC_selection(xtrain,ytrain,maxvar=None)
-# print idx
-# yp     = model.predict_gmm(xtest,featIdx=sp.sort(idx[-4:]),tau=None)[0]
-# j      = sp.where(yp.ravel()==ytest.ravel())[0]
-# OA     = (j.size*100.0)/ytest.size
-# print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
-# print "Processing time: ", time.time()-ts
-# print "Selected features: ", sp.sort(idx[-4:])
-# print "Final accuracy: ", OA
-# print "Pertinent features (by construction): ", var
+ts     = time.time()
+idx    = hsic.HSIC_selection(xtrain,ytrain,0.05,False)
+yp     = model.predict_gmm(xtest,featIdx=sp.sort(idx[-4:]),tau=None)[0]
+j      = sp.where(yp.ravel()==ytest.ravel())[0]
+OA     = (j.size*100.0)/ytest.size
+print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
+print "Processing time: ", time.time()-ts
+print "Selected features: ", sp.sort(idx[-4:])
+print "Final accuracy: ", OA
+print "Pertinent features (by construction): ", var
