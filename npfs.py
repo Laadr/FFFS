@@ -72,7 +72,7 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
 
     for i,var in enumerate(variables):
         if decisionMethod=='inv':
-            predLabels = model_cv.predict_gmm_maj(direction,samples,invCov,logdet,(i,var),featIdx=idx)[0]
+            predLabels = model_cv.predict_gmm_update(direction,samples,invCov,logdet,(i,var),featIdx=idx)[0]
         else:
             if direction=='forward':
                 id_t = list(idx)
@@ -224,9 +224,9 @@ def compute_divKL(direction, variables, model, idx):
         del vp,Q,rcond
 
         if direction=='forward':
-            invCov_maj = sp.empty((model.C,len(idx)+1,len(idx)+1))
+            invCov_update = sp.empty((model.C,len(idx)+1,len(idx)+1))
         elif direction=='backward':
-            invCov_maj = sp.empty((model.C,len(idx)-1,len(idx)-1))
+            invCov_update = sp.empty((model.C,len(idx)-1,len(idx)-1))
 
         for k,var in enumerate(variables):
             if direction=='forward':
@@ -245,19 +245,19 @@ def compute_divKL(direction, variables, model, idx):
             for c in xrange(model.C):
                 if direction=='forward':
                     maj_cst = model.cov[c,var,var] - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) )
-                    invCov_maj[c,mask,:][:,mask] = invCov[c,:,:] + 1/float(maj_cst) * sp.dot( sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) , sp.dot(model.cov[c,var,:][idx],invCov[c,:,:]) )
-                    invCov_maj[c,ind,mask]  = - 1/float(maj_cst) * sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T)
-                    invCov_maj[c,mask,ind]  = - 1/float(maj_cst) * sp.dot(model.cov[c,var,:][idx],invCov[c,:,:])
-                    invCov_maj[c,ind,ind]   = 1/float(maj_cst)
+                    invCov_update[c,mask,:][:,mask] = invCov[c,:,:] + 1/float(maj_cst) * sp.dot( sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) , sp.dot(model.cov[c,var,:][idx],invCov[c,:,:]) )
+                    invCov_update[c,ind,mask]  = - 1/float(maj_cst) * sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T)
+                    invCov_update[c,mask,ind]  = - 1/float(maj_cst) * sp.dot(model.cov[c,var,:][idx],invCov[c,:,:])
+                    invCov_update[c,ind,ind]   = 1/float(maj_cst)
 
                 elif direction=='backward':
-                    invCov_maj[c,:,:] = invCov[c,mask,mask] - 1/float(invCov[c,k,k]) * sp.dot(model.cov[c,var,:][idx].T , model.cov[c,var,:][idx])
+                    invCov_update[c,:,:] = invCov[c,mask,mask] - 1/float(invCov[c,k,k]) * sp.dot(model.cov[c,var,:][idx].T , model.cov[c,var,:][idx])
 
 
             for i in xrange(model.C):
                 for j in xrange(i+1,model.C):
                     md  = (model.mean[i,id_t]-model.mean[j,id_t])
-                    divKL[k] += 0.25*( sp.trace( sp.dot( invCov_maj[j,:,:],model.cov[i,id_t,:][:,id_t] ) + sp.dot( invCov_maj[i,:,:],model.cov[j,id_t,:][:,id_t] ) ) + sp.dot(md,sp.dot(invCov_maj[j,:,:]+invCov_maj[i,:,:],md.T)) ) * model.prop[i]*model.prop[j]
+                    divKL[k] += 0.25*( sp.trace( sp.dot( invCov_update[j,:,:],model.cov[i,id_t,:][:,id_t] ) + sp.dot( invCov_update[i,:,:],model.cov[j,id_t,:][:,id_t] ) ) + sp.dot(md,sp.dot(invCov_update[j,:,:]+invCov_update[i,:,:],md.T)) ) * model.prop[i]*model.prop[j]
 
     return divKL
 
@@ -381,6 +381,65 @@ class GMM(object):
 
         self.prop = self.nbSpl/samples.shape[0]
 
+    def predict_gmm(self, testSamples, tau=None, decisionMethod='linsyst'):
+        """
+            Function that predict the label for testSamples using the learned model
+            Inputs:
+                testSamples: the samples to be classified
+                tau:         regularization parameter
+            Outputs:
+                predLabels: the class
+                scores:     the decision value for each class
+        """
+        # Get information from the data
+        nbTestSpl = testSamples.shape[0] # Number of testing samples
+
+        # Initialization
+        scores = sp.empty((nbTestSpl,self.C))
+
+        idx = range(testSamples.shape[1])
+
+        if self.idxDecomp != idx:
+            self.vp    = sp.empty((self.C,testSamples.shape[1]))   # array of eigenvalues
+            self.Q     = sp.empty((self.C,testSamples.shape[1],testSamples.shape[1])) # array of eigenvectors
+
+        if tau is None:
+            tau = 0
+
+        # Start the prediction for each class
+        for c in xrange(self.C):
+            testSamples_c = testSamples - self.mean[c,:]
+
+            if self.idxDecomp != idx:
+                self.vp[c,:],self.Q[c,:,:],rcond = self.decomposition(self.cov[c,:,:])
+
+            regvp = self.vp[c,:] + tau
+            rcond = regvp.min()/regvp.max()
+
+            logdet        = sp.sum(sp.log(regvp))
+            cst           = logdet - 2*sp.log(self.prop[c]) # Pre compute the constant term
+
+            if decisionMethod=='inv':
+                temp = sp.dot( sp.dot(self.Q[c,:,:][:,:],((1/regvp)*self.Q[c,:,:][:,:]).T) , testSamples_c.T).T
+            else:
+                temp = mylstsq(self.cov[c,:,:],testSamples_c.T,rcond).T
+
+            scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst
+
+            del temp,testSamples_c
+        self.idxDecomp == idx
+
+        # Assign the label to the minimum value of scores
+        predLabels = sp.argmin(scores,1)+1
+
+        return predLabels,scores
+
+
+class GMMFeaturesSelection(GMM):
+
+    def __init__(self, d=0, C=0):
+        super(GMMFeaturesSelection, self).__init__(d,C)
+
     def predict_gmm(self, testSamples, featIdx=None, tau=None, decisionMethod='linsyst'):
         """
             Function that predict the label for testSamples using the learned model
@@ -439,13 +498,7 @@ class GMM(object):
 
         return predLabels,scores
 
-
-class GMMFeaturesSelection(GMM):
-
-    def __init__(self, d=0, C=0):
-        super(GMMFeaturesSelection, self).__init__(d,C)
-
-    def predict_gmm_maj(self, direction, testSamples, invCov, logdet, newFeat, featIdx=None):
+    def predict_gmm_update(self, direction, testSamples, invCov, logdet, newFeat, featIdx=None):
         """
             Function that predict the label for testSamples using the learned model (with an update method of the inverte covariance matrix)
             Inputs:
@@ -493,9 +546,9 @@ class GMMFeaturesSelection(GMM):
                 if direction=='forward':
                     d_feat     = self.cov[c,newFeat[1],newFeat[1]] - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
                     if d_feat > eps:
-                        logdet_maj = sp.log(d_feat) + logdet[c]
+                        logdet_update = sp.log(d_feat) + logdet[c]
                     else:
-                        logdet_maj = sp.log(eps) + logdet[c]
+                        logdet_update = sp.log(eps) + logdet[c]
 
                     ind            = id_t.index(newFeat[1])
                     mask           = sp.ones(len(id_t), dtype=bool)
@@ -508,12 +561,12 @@ class GMMFeaturesSelection(GMM):
 
                 elif direction=='backward':
                     d_feat     = 1/float( invCov[c,newFeat[0],newFeat[0]] )
-                    logdet_maj = - sp.log(d_feat) + logdet[c]
+                    logdet_update = - sp.log(d_feat) + logdet[c]
 
                     row_feat   = invCov[c,newFeat[0],:]
                     cst_feat   = - d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
 
-                cst = logdet_maj - self.logprop[c] # Pre compute the constant term
+                cst = logdet_update - self.logprop[c] # Pre compute the constant term
 
                 temp = sp.dot(invCov[c,:,:][:,:], testSamples_c.T).T
 
