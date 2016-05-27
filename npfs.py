@@ -12,29 +12,8 @@ import sklearn.cross_validation as cv
 from sklearn.metrics import confusion_matrix
 
 ## Utilitary functions
-def mylstsq(a, b, rcond):
-    """
-        Compute a safe/fast least square fitting.
-        For that particular case, the number of unknown parameters is equal to the number of equations.
-        However, a is a covariance matrix that might estimated with a number of samples less than the number of variables, leading to a badly conditionned covariance matrix.
-        So, the rcond number is check: if it is ok, we use the fast linalg.solve function; otherwise, we use the slow, but safe, linalg.lstsq function.
-        Inputs:
-        a: a symmetric definite positive matrix d times d
-        b: a d times n matrix
-        Outputs:
-        x: a d times n matrix
-    """
-    eps = sp.finfo(sp.float64).eps
-    if rcond>eps: # If the condition number is not too bad try linear system
-        try:
-            x = linalg.solve(a,b)
-        except linalg.LinAlgError: # If error, use least square estimations
-            x = linalg.lstsq(a,b)[0]
-    else:# Use least square estimate
-        x = linalg.lstsq(a,b)[0]
-    return x
 
-def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx, decisionMethod='linsyst'):
+def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx):
     """
         Function that computes the accuracy of the model_cv using the variables : idx +/- one of variables
         Inputs:
@@ -44,7 +23,6 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
             model_cv:       the model build with all the variables
             samples,labels: the samples/label for testing
             idx:            the pool of retained variables
-            decisionMethod: method to compute main term of decision function 'linsyst' or 'inv'. Default: 'linsyst'
         Output:
             metric: the estimated metric
 
@@ -56,34 +34,21 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
     idx        = sp.sort(idx)
 
     # Compute inv of covariance matrix
-    if decisionMethod == 'inv':
-        if len(idx)==0:
-            invCov = None
-            logdet = None
-        else:
-            invCov     = sp.empty((model_cv.C,len(idx),len(idx)))
-            logdet     = sp.empty((model_cv.C))
+    if len(idx)==0:
+        invCov = None
+        logdet = None
+    else:
+        invCov     = sp.empty((model_cv.C,len(idx),len(idx)))
+        logdet     = sp.empty((model_cv.C))
 
-            for c in xrange(model_cv.C):
-                vp,Q,rcond    = model_cv.decomposition(model_cv.cov[c,idx,:][:,idx])
-                invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
-                invCov[c,:,:] = linalg.inv(model_cv.cov[c,idx,:][:,idx])
-                logdet[c]     = sp.sum(sp.log(vp))
+        for c in xrange(model_cv.C):
+            vp,Q,rcond    = model_cv.decomposition(model_cv.cov[c,idx,:][:,idx])
+            invCov[c,:,:] = sp.dot(Q,((1/vp)*Q).T)
+            invCov[c,:,:] = linalg.inv(model_cv.cov[c,idx,:][:,idx])
+            logdet[c]     = sp.sum(sp.log(vp))
 
     for i,var in enumerate(variables):
-        if decisionMethod=='inv':
-            predLabels = model_cv.predict_gmm_update(direction,samples,invCov,logdet,(i,var),featIdx=idx)[0]
-        else:
-            if direction=='forward':
-                id_t = list(idx)
-                id_t.append(var)
-                id_t.sort()
-            elif direction=='backward':
-                mask    = sp.ones(len(variables), dtype=bool)
-                mask[i] = False
-                id_t    = list(idx[mask])
-            predLabels = model_cv.predict_gmm(samples,featIdx=id_t,decisionMethod=decisionMethod)[0] # Use the marginalization properties to update the model for each tuple of variables
-            del id_t
+        predLabels = model_cv.predict_gmm_update(direction,samples,invCov,logdet,(i,var),featIdx=idx)[0]
 
         confMatrix.compute_confusion_matrix(predLabels,labels)
         if criterion=='accuracy':
@@ -277,7 +242,7 @@ class ConfusionMatrix(object):
         """
         # Initialization
         self.n                = yp.size
-        C                     = int(yr.max())
+        # C                     = int(yr.max())
         self.confusionMatrix  = confusion_matrix(yr,yp)
         # self.confusionMatrix = sp.zeros((C,C),dtype=int)
 
@@ -309,7 +274,7 @@ class ConfusionMatrix(object):
         """
         nl = sp.sum(self.confusionMatrix,axis=1)
         nc = sp.sum(self.confusionMatrix,axis=0)
-        return sp.mean( sp.divide( 2.*sp.diag(self.confusionMatrix), (nl + nc)) )
+        return 2*sp.mean( sp.divide( sp.diag(self.confusionMatrix), (nl + nc)) )
 
 ## Gaussian Mixture Model
 
@@ -347,7 +312,7 @@ class GMM(object):
         else:
             rcond = vp.min()/vp.max()
 
-        vp = sp.where(vp<eps,eps,vp)
+        vp[vp<eps] = eps
 
         return vp,Q,rcond
 
@@ -381,7 +346,7 @@ class GMM(object):
 
         self.prop = self.nbSpl/samples.shape[0]
 
-    def predict_gmm(self, testSamples, tau=None, decisionMethod='linsyst'):
+    def predict_gmm(self, testSamples, tau=None):
         """
             Function that predict the label for testSamples using the learned model
             Inputs:
@@ -419,10 +384,7 @@ class GMM(object):
             logdet        = sp.sum(sp.log(regvp))
             cst           = logdet - 2*sp.log(self.prop[c]) # Pre compute the constant term
 
-            if decisionMethod=='inv':
-                temp = sp.dot( sp.dot(self.Q[c,:,:][:,:],((1/regvp)*self.Q[c,:,:][:,:]).T) , testSamples_c.T).T
-            else:
-                temp = mylstsq(self.cov[c,:,:],testSamples_c.T,rcond).T
+            temp = sp.dot( sp.dot(self.Q[c,:,:][:,:],((1/regvp)*self.Q[c,:,:][:,:]).T) , testSamples_c.T).T
 
             scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst
 
@@ -440,7 +402,7 @@ class GMMFeaturesSelection(GMM):
     def __init__(self, d=0, C=0):
         super(GMMFeaturesSelection, self).__init__(d,C)
 
-    def predict_gmm(self, testSamples, featIdx=None, tau=None, decisionMethod='linsyst'):
+    def predict_gmm(self, testSamples, featIdx=None, tau=None):
         """
             Function that predict the label for testSamples using the learned model
             Inputs:
@@ -483,10 +445,7 @@ class GMMFeaturesSelection(GMM):
             logdet        = sp.sum(sp.log(regvp))
             cst           = logdet - 2*sp.log(self.prop[c]) # Pre compute the constant term
 
-            if decisionMethod=='inv':
-                temp = sp.dot( sp.dot(self.Q[c,:,:][:,:],((1/regvp)*self.Q[c,:,:][:,:]).T) , testSamples_c.T).T
-            else:
-                temp = mylstsq(self.cov[c,idx,:][:,idx],testSamples_c.T,rcond).T
+            temp = sp.dot( sp.dot(self.Q[c,:,:][:,:],((1/regvp)*self.Q[c,:,:][:,:]).T) , testSamples_c.T).T
 
             scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst
 
@@ -580,7 +539,7 @@ class GMMFeaturesSelection(GMM):
         predLabels = sp.argmin(scores,1)+1
         return predLabels,scores
 
-    def selection(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, ncpus=None, decisionMethod='linsyst', random_state=1):
+    def selection(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, ncpus=None, random_state=1):
         """
             Function that selects the most discriminative variables according to a given search method
             Inputs:
@@ -593,7 +552,6 @@ class GMMFeaturesSelection(GMM):
                 nfold:           number of folds for the cross-validation. Default value: 5
                 balanced:        If true, same proportion of each class in each fold. Default: True
                 ncpus:           number of cpus to use for parallelization. Default: all
-                decisionMethod:  'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
 
             Outputs:
                 idx:              the selected variables
@@ -645,13 +603,13 @@ class GMMFeaturesSelection(GMM):
             model_pre_cv = None
 
         if direction == 'forward':
-            return self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
+            return self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus)
         elif direction == 'backward':
-            return self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
+            return self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus)
         elif direction == 'SFFS':
-            return self.floating_forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod)
+            return self.floating_forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus)
 
-    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
+    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus):
         """
             Function that selects the most discriminative variables according to a forward search
             Inputs:
@@ -663,7 +621,6 @@ class GMMFeaturesSelection(GMM):
                 kfold:           k-folds for the cross-validation.
                 model_pre_cv:    GMM models for each CV.
                 ncpus:           number of cpus to use for parallelization.
-                decisionMethod:  'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
 
             Outputs:
                 idx:              the selected variables
@@ -689,7 +646,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
                 pool.close()
                 pool.join()
 
@@ -725,7 +682,7 @@ class GMMFeaturesSelection(GMM):
         ## Return the final value
         return idx,criterionBestVal
 
-    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
+    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus):
         """
             Function that selects the most discriminative variables according to a backward search
             Inputs:
@@ -737,7 +694,6 @@ class GMMFeaturesSelection(GMM):
                 kfold:            k-folds for the cross-validation.
                 model_pre_cv:     GMM models for each CV.
                 ncpus:            number of cpus to use for parallelization.
-                decisionMethod:   'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
             Outputs:
                 idx:              the selected variables
                 criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
@@ -760,7 +716,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
                 pool.close()
                 pool.join()
 
@@ -793,7 +749,7 @@ class GMMFeaturesSelection(GMM):
         ## Return the final value
         return idx,criterionBestVal
 
-    def floating_forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus, decisionMethod):
+    def floating_forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus):
         """
             Function that selects the most discriminative variables according to a floating forward search
             Inputs:
@@ -805,7 +761,6 @@ class GMMFeaturesSelection(GMM):
                 kfold:            k-folds for the cross-validation.
                 model_pre_cv:     GMM models for each CV.
                 ncpus:            number of cpus to use for parallelization.
-                decisionMethod:   'linsyst' to use least quare to compute decision, 'inv' to use matrix inv computed by matrix diaginalization to compute decision. Default: 'linsyst'
             Outputs:
                 idx:              the selected variables
                 criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
@@ -832,7 +787,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
                 pool.close()
                 pool.join()
 
@@ -878,7 +833,7 @@ class GMMFeaturesSelection(GMM):
                     if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                         # Parallelize cv
                         pool = mp.Pool(processes=ncpus)
-                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx,decisionMethod)) for k, (trainInd,testInd) in enumerate(kfold)]
+                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
                         pool.close()
                         pool.join()
 
