@@ -486,14 +486,9 @@ class GMMFeaturesSelection(GMM):
         for c in xrange(self.C):
             testSamples_c = testSamples[:,id_t] - self.mean[c,id_t]
 
-            if logdet is None and invCov is None:
-                logdet_maj = sp.sum(sp.log(self.cov[c,newFeat[1],newFeat[1]]))
+            if len(id_t)==1:
+                scores[:,c] = sp.sum(testSamples_c*testSamples_c,axis=1)/self.cov[c,id_t,id_t] + sp.log(self.cov[c,id_t,id_t]) - self.logprop[c]
 
-                tmp = float(self.cov[c,id_t,id_t])
-                temp = sp.dot([[1/tmp]], testSamples_c.T).T
-                print tmp
-
-                scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + logdet_maj - self.logprop[c]
             else:
                 if direction=='forward':
                     d_feat     = self.cov[c,newFeat[1],newFeat[1]] - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
@@ -524,7 +519,9 @@ class GMMFeaturesSelection(GMM):
 
                 scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst_feat + cst
 
-            del temp,testSamples_c
+                del temp
+
+            del testSamples_c
 
         # Assign the label to the minimum value of scores
         predLabels = sp.argmin(scores,1)+1
