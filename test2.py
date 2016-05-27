@@ -33,7 +33,7 @@ del x,y
 
 model    = npfs.GMMFeaturesSelection()
 model.learn_gmm(xtrain, ytrain)
-yp       = model.predict_gmm(xtest,tau=None,decisionMethod='inv')[0]
+yp       = model.predict_gmm(xtest,tau=None)[0]
 yp.shape = ytest.shape
 t        = sp.where(yp==ytest)[0]
 print "Accuracy without selection: ", float(t.size)/ytest.size
@@ -41,7 +41,7 @@ print "Accuracy without selection: ", float(t.size)/ytest.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=5,balanced=True,decisionMethod='inv')
+idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=4,nfold=5,balanced=True)
 idx.sort()
 yp     = model.predict_gmm(xtest,featIdx=idx,tau=None)[0]
 j      = sp.where(yp.ravel()==ytest.ravel())[0]
