@@ -54,7 +54,7 @@ for Nt,stratification in Nts:
             model    = npfs.GMMFeaturesSelection()
             model.learn_gmm(xtrain, ytrain)
             printFile.write("Proportion of classes (%): "+str(100*model.prop.ravel())+"\n\n")
-            # yp       = model.predict_gmm(xtest,tau=None)[0]
+            # yp       = model.predict_gmm(xtest)[0]
             # t        = sp.where(yp.ravel()==ytest.ravel())[0]
             # printFile.write("Accuracy without selection: "+str(float(t.size)/ytest.size)+"\n")
 
@@ -102,7 +102,7 @@ for Nt,stratification in Nts:
                     clf = grid.best_estimator_
 
                 for k in xrange(5,maxVar+1):
-                    yp        = model.predict_gmm(xtest,featIdx=idx[:k],tau=None)[0]
+                    yp        = model.predict_gmm(xtest,featIdx=idx[:k])[0]
 
                     confMatrix.compute_confusion_matrix(yp,ytest)
                     OA[k-5,0]     = confMatrix.get_OA()*100

@@ -20,7 +20,7 @@ y[t>sp.mean(t)] = 2
 
 model    = npfs.GMMFeaturesSelection()
 model.learn_gmm(x, y)
-yp       = model.predict_gmm(x,tau=None)[0]
+yp       = model.predict_gmm(x)[0]
 yp.shape = y.shape
 t        = sp.where(yp==y)[0]
 print "Accuracy without selection: ", float(t.size)/y.size
@@ -28,7 +28,7 @@ print "Accuracy without selection: ", float(t.size)/y.size
 # 5-CV
 ts     = time.time()
 idx,selectionOA = model.selection('forward',x, y,criterion='accuracy', stopMethod='maxVar', delta=1.5, maxvar=3,nfold=2,balanced=True)
-yp     = model.predict_gmm(x,featIdx=idx.sort(),tau=None)[0]
+yp     = model.predict_gmm(x,featIdx=idx.sort())[0]
 j      = sp.where(yp.ravel()==y.ravel())[0]
 OA     = (j.size*100.0)/y.size
 print "\nResults for 5-CV with accuracy as criterion and forward selection\n"

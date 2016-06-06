@@ -28,10 +28,8 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
 
         Used in GMM.forward_selection(), GMM.backward_selection()
     """
-    variables  = sp.sort(variables)
     metric     = sp.zeros(variables.size)
     confMatrix = ConfusionMatrix()
-    idx.sort()
 
     # Compute inv of covariance matrix
     if len(idx)==0:
@@ -62,10 +60,10 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
 
 def compute_JM(direction, variables, model, idx):
     """
-        Function that computes the Jeffries–Matusita distance of the model_cv using the variables : idx +/- one of variables
+        Function that computes the Jeffries–Matusita distance of the model using the variables : idx +/- one of variables
         Inputs:
             variables: the variable to add to idx
-            model_cv:  the model build with all the variables
+            model:     the model build with all the variables
             idx:       the pool of retained variables
         Output:
             JM: the estimated Jeffries–Matusita distance
@@ -76,9 +74,6 @@ def compute_JM(direction, variables, model, idx):
     JM = sp.zeros(variables.size)
     d  = sp.zeros((model.C,variables.size))
 
-    # Cast and sort index of selected variables
-    idx.sort()
-
     # Compute all possible update of det cov(idx)
     if len(idx)==0:
         for c in xrange(model.C):
@@ -86,7 +81,7 @@ def compute_JM(direction, variables, model, idx):
                 d[c,k] = model.cov[c,var,var]
     else:
         for c in xrange(model.C):
-            vp,Q,rcond = model.decomposition(model.cov[c,idx,:][:,idx])
+            vp,Q,_ = model.decomposition(model.cov[c,idx,:][:,idx])
             det = sp.prod(vp)
             invCov = sp.dot(Q,((1/vp)*Q).T)
             for k,var in enumerate(variables):
@@ -95,7 +90,7 @@ def compute_JM(direction, variables, model, idx):
                 elif direction=='backward':
                     maj_cst = 1/float( invCov[k,k] )
                 d[c,k]  = maj_cst * det
-        del vp,Q,rcond,maj_cst,invCov
+        del vp,Q,maj_cst,invCov
 
     if len(idx)==0:
         for i in xrange(model.C):
@@ -113,10 +108,10 @@ def compute_JM(direction, variables, model, idx):
     else:
         for i in xrange(model.C):
             for j in xrange(i+1,model.C):
-                cs  = (model.cov[i,idx,:][:,idx]+model.cov[j,idx,:][:,idx])/2
+                cs         = (model.cov[i,idx,:][:,idx]+model.cov[j,idx,:][:,idx])/2
                 vp,Q,rcond = model.decomposition(cs)
-                invCov = sp.dot(Q,((1/vp)*Q).T)
-                det = sp.prod(vp)
+                invCov     = sp.dot(Q,((1/vp)*Q).T)
+                det        = sp.prod(vp)
 
                 for k,var in enumerate(variables):
                     md      = (model.mean[i,idx]-model.mean[j,idx])
@@ -124,17 +119,15 @@ def compute_JM(direction, variables, model, idx):
                     if direction=='forward':
                         id_t = list(idx)
                         id_t.append(var)
-                        id_t.sort()
 
-                        c1 = (model.cov[i,var,var]+model.cov[j,var,var])/2
-                        c2 = (model.cov[i,var,:][idx]+model.cov[j,var,:][idx])/2
+                        c1      = (model.cov[i,var,var]+model.cov[j,var,var])/2
+                        c2      = (model.cov[i,var,:][idx]+model.cov[j,var,:][idx])/2
                         maj_cst = c1 - sp.dot(c2, sp.dot(invCov,c2.T) )
-                        dij = maj_cst * det
+                        dij     = maj_cst * det
 
-                        md_new  = (model.mean[i,id_t]-model.mean[j,id_t])
-                        ind      = id_t.index(var)
+                        md_new   = (model.mean[i,id_t]-model.mean[j,id_t])
                         row_feat = -1/float(maj_cst) * sp.dot(c2,invCov)
-                        row_feat = sp.insert( row_feat, ind, 1/float(maj_cst) )
+                        row_feat = sp.append(row_feat,1/float(maj_cst))
                         cst_feat = maj_cst * (sp.dot(row_feat,md_new.T)**2)
 
                     elif direction=='backward':
@@ -270,8 +263,8 @@ class ConfusionMatrix(object):
         """
             Compute F1 Mean
         """
-        nl = sp.sum(self.confusionMatrix,axis=1)
-        nc = sp.sum(self.confusionMatrix,axis=0)
+        nl = sp.sum(self.confusionMatrix,axis=1,dtype=float)
+        nc = sp.sum(self.confusionMatrix,axis=0,dtype=float)
         return 2*sp.mean( sp.divide( sp.diag(self.confusionMatrix), (nl + nc)) )
 
 ## Gaussian Mixture Model
@@ -444,7 +437,7 @@ class GMMFeaturesSelection(GMM):
 
         return predLabels,scores
 
-    def predict_gmm_update(self, direction, testSamples, invCov, logdet, newFeat, featIdx=None):
+    def predict_gmm_update(self, direction, testSamples, invCov, logdet, newFeat, featIdx):
         """
             Function that predict the label for testSamples using the learned model (with an update method of the inverse of covariance matrix)
             Inputs:
@@ -465,10 +458,6 @@ class GMMFeaturesSelection(GMM):
 
         # Initialization
         scores = sp.empty((nbTestSpl,self.C))
-
-        # If not specified, predict with all features
-        if featIdx is None:
-            featIdx = range(testSamples.shape[1])
 
         # New set of features
         if direction=='forward':
@@ -492,27 +481,25 @@ class GMMFeaturesSelection(GMM):
                     else:
                         logdet_update = sp.log(eps) + logdet[c]
 
-                    row_feat       = sp.empty((len(id_t)))
+                    row_feat                = sp.empty((len(id_t)))
                     row_feat[:len(featIdx)] = -1/float(d_feat) * sp.dot(self.cov[c,:,newFeat[1]][featIdx],invCov[c,:,:][:,:])
-                    row_feat[-1]  = 1/float(d_feat)
-                    cst_feat       = d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
-                    testSamples_c  = testSamples[:,featIdx] - self.mean[c,featIdx]
+                    row_feat[-1]            = 1/float(d_feat)
+                    cst_feat                = d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
+                    testSamples_c           = testSamples[:,featIdx] - self.mean[c,featIdx]
 
                 elif direction=='backward':
-                    d_feat     = 1/float( invCov[c,newFeat[0],newFeat[0]] )
+                    d_feat        = 1/float( invCov[c,newFeat[0],newFeat[0]] )
                     logdet_update = - sp.log(d_feat) + logdet[c]
 
-                    row_feat   = invCov[c,newFeat[0],:]
-                    cst_feat   = - d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
+                    row_feat      = invCov[c,newFeat[0],:]
+                    cst_feat      = - d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
 
                 cst = logdet_update - self.logprop[c] # Pre compute the constant term
 
                 temp = sp.dot(invCov[c,:,:][:,:], testSamples_c.T).T
-
                 scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst_feat + cst
 
                 del temp
-
             del testSamples_c
 
         # Assign the label to the minimum value of scores
@@ -521,11 +508,11 @@ class GMMFeaturesSelection(GMM):
 
     def selection(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, ncpus=None, random_state=1):
         """
-            Function that selects the most discriminative variables according to a given search method
+            Function which selects the most discriminative variables according to a given search method
             Inputs:
-                direction:       'backward' or 'forward'
+                direction:       'backward' or 'forward' or 'SFFS'
                 samples, labels: the training samples and their labels
-                criterion:       the criterion function to use for selection (accuracy, kappa, F1Mean, JM).  Default: 'accuracy'
+                criterion:       the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).  Default: 'accuracy'
                 stopMethod:      the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta. Default: 'maxVar'
                 delta :          the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta. Default value 0.1%
                 maxvar:          maximum number of extracted variables. Default value: 20% of the original number
@@ -535,10 +522,9 @@ class GMMFeaturesSelection(GMM):
 
             Outputs:
                 idx:              the selected variables
-                criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
         """
         # Get some information from the variables
-        n = samples.shape[0]      # Number of samples
+        n = samples.shape[0] # Number of samples
 
         # Cast to speed processing time
         labels = labels.ravel().astype(int)
@@ -552,7 +538,7 @@ class GMMFeaturesSelection(GMM):
                 kfold = cv.KFold(n,n_folds=nfold,shuffle=True) # kfold is an iterator
 
             ## Pre-update the models
-            model_pre_cv = [GMMFeaturesSelection(d=self.d, C=self.C) for i in xrange(len(kfold))]
+            model_pre_cv = [GMMFeaturesSelection(d=self.d, C=self.C) for i in xrange(nfold)]
             for k, (trainInd,testInd) in enumerate(kfold):
                 # Get training data for this cv round
                 testSamples,testLabels = samples[testInd,:], labels[testInd]
@@ -615,7 +601,7 @@ class GMMFeaturesSelection(GMM):
         nbSelectFeat     = 0                       # Initialization of the counter
         variables        = sp.arange(self.d)       # At step zero: d variables available
         idx              = []                      # and no selected variable
-        criterionBestVal = []                      # list of the evolution the OA estimation
+        criterionBestVal = []                      # list of the evolution the criterion function
         if maxvar==0.2:
             maxvar = sp.floor(self.d*maxvar) # Select at max maxvar % of the original number of variables
 
@@ -646,11 +632,11 @@ class GMMFeaturesSelection(GMM):
 
             # Select the variable that provides the highest loocv
             bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
-            criterionBestVal.append(criterionVal[bestVar])         # save criterion value
+            criterionBestVal.append(criterionVal[bestVar])   # save criterion value
 
             if nbSelectFeat==0:
                 idx.append(variables[bestVar])           # add the selected variables to the pool
-                variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
+                variables = sp.delete(variables,bestVar) # remove the selected variables from the initial set
             elif (stopMethod=='variation') and (((criterionBestVal[nbSelectFeat]-criterionBestVal[nbSelectFeat-1])/criterionBestVal[nbSelectFeat-1]*100) < delta):
                 criterionBestVal.pop()
                 break
@@ -724,7 +710,7 @@ class GMMFeaturesSelection(GMM):
             else:
                 mask           = sp.ones(len(idx), dtype=bool)
                 mask[worstVar] = False
-                idx            = idx[mask]                    # delete the selected variable of the pool
+                idx            = idx[mask] # delete the selected variable of the pool
 
         ## Return the final value
         return idx,criterionBestVal
