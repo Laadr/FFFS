@@ -281,16 +281,16 @@ class ConfusionMatrix(object):
 class GMM(object):
 
     def __init__(self, d=0, C=0):
-        self.nbSpl = sp.empty((C,1)) # array of number of samples in each class
-        self.prop  = sp.empty((C,1)) # array of proportion in training set
-        self.mean  = sp.empty((C,d)) # array of means
+        self.nbSpl = sp.empty((C,1))   # array of number of samples in each class
+        self.prop  = sp.empty((C,1))   # array of proportion in training set
+        self.mean  = sp.empty((C,d))   # array of means
         self.cov   = sp.empty((C,d,d)) # array of covariance matrices
-        self.C     = C            # number of class
-        self.d     = d            # number of features
+        self.C     = C                 # number of class
+        self.d     = d                 # number of features
 
-        self.idxDecomp = []
-        self.vp    = sp.empty((C,d))   # array of eigenvalues
-        self.Q     = sp.empty((C,d,d)) # array of eigenvectors
+        self.idxDecomp = []                # empty if no decomposition since last learning and store index of features of last decomposition in the case of selection
+        self.vp        = sp.empty((C,d))   # array of eigenvalues
+        self.Q         = sp.empty((C,d,d)) # array of eigenvectors
 
     def decomposition(self, M):
         """
@@ -320,8 +320,8 @@ class GMM(object):
         """
             Method that learns the GMM from training samples and store the mean, covariance and proportion of each class in class members.
             Input:
-                samples: the training samples
-                labels:  the labels
+                samples: training samples
+                labels:  training labels (must be exactly C labels between 1 and C)
         """
         # Get information from the data
         self.C = int(labels.max(0)) # Number of classes
@@ -332,7 +332,9 @@ class GMM(object):
         self.prop      = sp.empty((self.C,1))   # Vector of proportion
         self.mean      = sp.empty((self.C,self.d))   # Vector of means
         self.cov       = sp.empty((self.C,self.d,self.d)) # Matrix of covariance
-        self.idxDecomp = []
+        self.idxDecomp = [] # reset to empty to allow recomputation of eigenvalues
+        self.vp        = sp.empty((self.C,samples.shape[1]))   # array of eigenvalues
+        self.Q         = sp.empty((self.C,samples.shape[1],samples.shape[1])) # array of eigenvectors
 
         # Learn the parameter of the model for each class
         for i in xrange(self.C):
@@ -342,11 +344,11 @@ class GMM(object):
             # Update GMM
             self.nbSpl[i]   = float(j.size)
             self.mean[i,:]  = sp.mean(samples[j,:],axis=0)
-            self.cov[i,:,:] = sp.cov(samples[j,:],rowvar=0)
+            self.cov[i,:,:] = sp.cov(samples[j,:],rowvar=0) # implicit: with no bias
 
         self.prop = self.nbSpl/samples.shape[0]
 
-    def predict_gmm(self, testSamples, tau=None):
+    def predict_gmm(self, testSamples, tau=0):
         """
             Function that predict the label for testSamples using the learned model
             Inputs:
@@ -362,24 +364,14 @@ class GMM(object):
         # Initialization
         scores = sp.empty((nbTestSpl,self.C))
 
-        idx = range(testSamples.shape[1])
-
-        if self.idxDecomp != idx:
-            self.vp    = sp.empty((self.C,testSamples.shape[1]))   # array of eigenvalues
-            self.Q     = sp.empty((self.C,testSamples.shape[1],testSamples.shape[1])) # array of eigenvectors
-
-        if tau is None:
-            tau = 0
-
         # Start the prediction for each class
         for c in xrange(self.C):
             testSamples_c = testSamples - self.mean[c,:]
 
-            if self.idxDecomp != idx:
-                self.vp[c,:],self.Q[c,:,:],rcond = self.decomposition(self.cov[c,:,:])
+            if self.idxDecomp == []:
+                self.vp[c,:],self.Q[c,:,:],_ = self.decomposition(self.cov[c,:,:])
 
             regvp = self.vp[c,:] + tau
-            rcond = regvp.min()/regvp.max()
 
             logdet        = sp.sum(sp.log(regvp))
             cst           = logdet - 2*sp.log(self.prop[c]) # Pre compute the constant term
@@ -389,7 +381,7 @@ class GMM(object):
             scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst
 
             del temp,testSamples_c
-        self.idxDecomp == idx
+        self.idxDecomp = range(testSamples.shape[1])
 
         # Assign the label to the minimum value of scores
         predLabels = sp.argmin(scores,1)+1
@@ -402,7 +394,7 @@ class GMMFeaturesSelection(GMM):
     def __init__(self, d=0, C=0):
         super(GMMFeaturesSelection, self).__init__(d,C)
 
-    def predict_gmm(self, testSamples, featIdx=None, tau=None):
+    def predict_gmm(self, testSamples, featIdx=None, tau=0):
         """
             Function that predict the label for testSamples using the learned model
             Inputs:
@@ -425,22 +417,19 @@ class GMMFeaturesSelection(GMM):
         else:
             idx = featIdx
 
+        # Allocate storage for decomposition in eigenvalues
         if self.idxDecomp != idx:
             self.vp    = sp.empty((self.C,len(idx)))   # array of eigenvalues
             self.Q     = sp.empty((self.C,len(idx),len(idx))) # array of eigenvectors
-
-        if tau is None:
-            tau = 0
 
         # Start the prediction for each class
         for c in xrange(self.C):
             testSamples_c = testSamples[:,idx] - self.mean[c,idx]
 
             if self.idxDecomp != idx:
-                self.vp[c,:],self.Q[c,:,:],rcond = self.decomposition(self.cov[c,idx,:][:,idx])
+                self.vp[c,:],self.Q[c,:,:],_ = self.decomposition(self.cov[c,idx,:][:,idx])
 
             regvp = self.vp[c,:] + tau
-            rcond = regvp.min()/regvp.max()
 
             logdet        = sp.sum(sp.log(regvp))
             cst           = logdet - 2*sp.log(self.prop[c]) # Pre compute the constant term
@@ -450,7 +439,7 @@ class GMMFeaturesSelection(GMM):
             scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst
 
             del temp,testSamples_c
-        self.idxDecomp == idx
+        self.idxDecomp = idx
 
         # Assign the label to the minimum value of scores
         predLabels = sp.argmin(scores,1)+1
@@ -459,7 +448,7 @@ class GMMFeaturesSelection(GMM):
 
     def predict_gmm_update(self, direction, testSamples, invCov, logdet, newFeat, featIdx=None):
         """
-            Function that predict the label for testSamples using the learned model (with an update method of the inverte covariance matrix)
+            Function that predict the label for testSamples using the learned model (with an update method of the inverse of covariance matrix)
             Inputs:
                 direction:   'backward' or 'forward'
                 testSamples: the samples to be classified
