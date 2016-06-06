@@ -54,15 +54,17 @@ for Nt,stratification in Nts:
             model    = npfs.GMMFeaturesSelection()
             model.learn_gmm(xtrain, ytrain)
             printFile.write("Proportion of classes (%): "+str(100*model.prop.ravel())+"\n\n")
-            # yp       = model.predict_gmm(xtest,tau=None,decisionMethod='inv')[0]
+            # yp       = model.predict_gmm(xtest,tau=None)[0]
             # t        = sp.where(yp.ravel()==ytest.ravel())[0]
             # printFile.write("Accuracy without selection: "+str(float(t.size)/ytest.size)+"\n")
+
 
 
             results = []
             if svmTest:
                 results_svm = []
             confMatrix = npfs.ConfusionMatrix()
+
             for i in xrange(ntrial):
                 processingTime  = 0.
                 OA,kappa,F1Mean = sp.zeros((maxVar-5+1,1)), sp.zeros((maxVar-5+1,1)), sp.zeros((maxVar-5+1,1))
@@ -88,7 +90,7 @@ for Nt,stratification in Nts:
                 model.learn_gmm(xtrain, ytrain)
 
                 ts = time.time()
-                idx,selectionOA = model.selection(method,xtrain,ytrain,criterion=criterion,stopMethod='maxVar',delta=1.5,maxvar=maxVar,nfold=5,balanced=True,tau=None,decisionMethod='inv',random_state=1)
+                idx,selectionOA = model.selection(method,xtrain,ytrain,criterion=criterion,stopMethod='maxVar',delta=1.5,maxvar=maxVar,nfold=5,balanced=True,random_state=1)
                 processingTime = time.time()-ts
                 idxs           = sp.asarray(idx)
 
