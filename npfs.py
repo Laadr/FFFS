@@ -31,7 +31,7 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
     variables  = sp.sort(variables)
     metric     = sp.zeros(variables.size)
     confMatrix = ConfusionMatrix()
-    idx        = sp.sort(idx)
+    idx.sort()
 
     # Compute inv of covariance matrix
     if len(idx)==0:
@@ -77,7 +77,6 @@ def compute_JM(direction, variables, model, idx):
     d  = sp.zeros((model.C,variables.size))
 
     # Cast and sort index of selected variables
-    idx = list(idx)
     idx.sort()
 
     # Compute all possible update of det cov(idx)
@@ -169,7 +168,6 @@ def compute_divKL(direction, variables, model, idx):
     invCov = sp.empty((model.C,len(idx),len(idx)))
 
     # Cast and sort index of selected variables
-    idx = list(idx)
     idx.sort()
 
     if len(idx)==0:
@@ -474,14 +472,10 @@ class GMMFeaturesSelection(GMM):
 
         # New set of features
         if direction=='forward':
-            featIdx  = list(featIdx)
-            featIdx.sort()
             id_t = list(featIdx)
             id_t.append(newFeat[1])
-            id_t.sort()
         elif direction=='backward':
             id_t = list(featIdx)
-            id_t.sort()
 
         # Start the prediction for each class
         for c in xrange(self.C):
@@ -498,12 +492,9 @@ class GMMFeaturesSelection(GMM):
                     else:
                         logdet_update = sp.log(eps) + logdet[c]
 
-                    ind            = id_t.index(newFeat[1])
-                    mask           = sp.ones(len(id_t), dtype=bool)
-                    mask[ind]      = False
                     row_feat       = sp.empty((len(id_t)))
-                    row_feat[mask] = -1/float(d_feat) * sp.dot(self.cov[c,:,newFeat[1]][featIdx],invCov[c,:,:][:,:])
-                    row_feat[ind]  = 1/float(d_feat)
+                    row_feat[:len(featIdx)] = -1/float(d_feat) * sp.dot(self.cov[c,:,newFeat[1]][featIdx],invCov[c,:,:][:,:])
+                    row_feat[-1]  = 1/float(d_feat)
                     cst_feat       = d_feat * (sp.dot(row_feat,testSamples_c.T)**2)
                     testSamples_c  = testSamples[:,featIdx] - self.mean[c,featIdx]
 
