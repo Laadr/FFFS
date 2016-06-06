@@ -2,6 +2,7 @@
 import npfs as npfs
 import scipy as sp
 from sklearn.cross_validation import train_test_split
+import sklearn as sk
 import time
 import pickle
 
@@ -15,14 +16,11 @@ C    = len(sp.unique(y))
 print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes: ",C,"\n"
 
 
-# Nt             = 50 # Nb of samples per class in training set
-ntrial         = 20
-maxVar         = 30
-# criterion      = 'accuracy'
-# method         = 'SFFS' #'SFFS' or 'forward'
-# stratification = False
+ntrial         = 2
+maxVar         = 10
 
-Nts        = [(50,False), (100,False), (200,False), (400,False), (0.025,True), (0.05,True), (0.1,True)] # Nb of samples per class in training set
+svmTest    = False
+Nts        = [(50,False)]#, (100,False), (200,False), (400,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
 methods    = ['forward','SFFS']
 criterions = ['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
 
@@ -56,12 +54,14 @@ for Nt,stratification in Nts:
             model    = npfs.GMMFeaturesSelection()
             model.learn_gmm(xtrain, ytrain)
             printFile.write("Proportion of classes (%): "+str(100*model.prop.ravel())+"\n\n")
-            yp       = model.predict_gmm(xtest,tau=None,decisionMethod='inv')[0]
-            t        = sp.where(yp.ravel()==ytest.ravel())[0]
-            printFile.write("Accuracy without selection: "+str(float(t.size)/ytest.size)+"\n")
+            # yp       = model.predict_gmm(xtest,tau=None,decisionMethod='inv')[0]
+            # t        = sp.where(yp.ravel()==ytest.ravel())[0]
+            # printFile.write("Accuracy without selection: "+str(float(t.size)/ytest.size)+"\n")
 
 
             results = []
+            if svmTest:
+                results_svm = []
             confMatrix = npfs.ConfusionMatrix()
             for i in xrange(ntrial):
                 processingTime  = 0.
@@ -92,13 +92,24 @@ for Nt,stratification in Nts:
                 processingTime = time.time()-ts
                 idxs           = sp.asarray(idx)
 
+                # SVM
+                if svmTest:
+                    cv = sk.cross_validation.StratifiedKFold(ytrain.shape[0], n_folds=5, shuffle=True, random_state=0)
+                    grid = sk.grid_search.GridSearchCV(SVC(), param_grid=param_grid_svm, cv=cv,n_jobs=-1)
+                    grid.fit(xtrain[:,idx[:maxVar]], ytrain)
+                    clf = grid.best_estimator_
+
                 for k in xrange(5,maxVar+1):
                     yp        = model.predict_gmm(xtest,featIdx=idx[:k],tau=None)[0]
 
                     confMatrix.compute_confusion_matrix(yp,ytest)
-                    OA[i,0]     = confMatrix.get_OA()*100
-                    kappa[i,0]  = confMatrix.get_kappa()
-                    F1Mean[i,0] = confMatrix.get_F1Mean()
+                    OA[k-5,0]     = confMatrix.get_OA()*100
+                    kappa[k-5,0]  = confMatrix.get_kappa()
+                    F1Mean[k-5,0] = confMatrix.get_F1Mean()
+
+                    if svmTest:
+                        clf.fit(xtrain,ytrain)
+                        yp = clf.predict(xtest).reshape(ytest.shape)
 
                 results.append((idxs,OA,kappa,F1Mean,processingTime))
                 printFile.write("\nResults for 5-CV with " + criterion + " as criterion and " + method + " selection \n\n")
@@ -114,3 +125,5 @@ for Nt,stratification in Nts:
             f = open('Results/'+filename+'.pckl', 'w')
             pickle.dump(results, f)
             f.close()
+
+
