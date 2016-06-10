@@ -506,18 +506,15 @@ class GMMFeaturesSelection(GMM):
         predLabels = sp.argmin(scores,1)+1
         return predLabels,scores
 
-    def selection(self, direction, samples, labels, criterion='accuracy', stopMethod='maxVar', delta=0.1, maxvar=0.2, nfold=5, balanced=True, ncpus=None, random_state=1):
+    def selection(self, direction, samples, labels, criterion='accuracy', maxvar=0.2, nfold=5, ncpus=None, random_state=0):
         """
             Function which selects the most discriminative variables according to a given search method
             Inputs:
                 direction:       'backward' or 'forward' or 'SFFS'
                 samples, labels: the training samples and their labels
                 criterion:       the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).  Default: 'accuracy'
-                stopMethod:      the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta. Default: 'maxVar'
-                delta :          the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta. Default value 0.1%
                 maxvar:          maximum number of extracted variables. Default value: 20% of the original number
                 nfold:           number of folds for the cross-validation. Default value: 5
-                balanced:        If true, same proportion of each class in each fold. Default: True
                 ncpus:           number of cpus to use for parallelization. Default: all
 
             Outputs:
@@ -532,10 +529,7 @@ class GMMFeaturesSelection(GMM):
         if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
 
             # Creation of folds
-            if balanced:
-                kfold = cv.StratifiedKFold(labels.ravel(),n_folds=nfold,shuffle=True,random_state=random_state) # kfold is an iterator
-            else:
-                kfold = cv.KFold(n,n_folds=nfold,shuffle=True) # kfold is an iterator
+            kfold = cv.StratifiedKFold(labels.ravel(),n_folds=nfold,shuffle=True,random_state=random_state) # kfold is an iterator
 
             ## Pre-update the models
             model_pre_cv = [GMMFeaturesSelection(d=self.d, C=self.C) for i in xrange(nfold)]
@@ -569,20 +563,18 @@ class GMMFeaturesSelection(GMM):
             model_pre_cv = None
 
         if direction == 'forward':
-            return self.forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus)
+            return self.forward_selection(samples, labels, criterion, maxvar, kfold, model_pre_cv, ncpus)
         elif direction == 'backward':
-            return self.backward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus)
+            return self.backward_selection(samples, labels, criterion, maxvar, kfold, model_pre_cv, ncpus)
         elif direction == 'SFFS':
-            return self.floating_forward_selection(samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus)
+            return self.floating_forward_selection(samples, labels, criterion, maxvar, kfold, model_pre_cv, ncpus)
 
-    def forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus):
+    def forward_selection(self, samples, labels, criterion, maxvar, kfold, model_pre_cv, ncpus):
         """
             Function that selects the most discriminative variables according to a forward search
             Inputs:
                 samples, labels: the training samples and their labels
                 criterion:       the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).
-                stopMethod:      the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
-                delta:           the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
                 maxvar:          maximum number of extracted variables.
                 kfold:           k-folds for the cross-validation.
                 model_pre_cv:    GMM models for each CV.
@@ -637,9 +629,6 @@ class GMMFeaturesSelection(GMM):
             if nbSelectFeat==0:
                 idx.append(variables[bestVar])           # add the selected variables to the pool
                 variables = sp.delete(variables,bestVar) # remove the selected variables from the initial set
-            elif (stopMethod=='variation') and (((criterionBestVal[nbSelectFeat]-criterionBestVal[nbSelectFeat-1])/criterionBestVal[nbSelectFeat-1]*100) < delta):
-                criterionBestVal.pop()
-                break
             else:
                 idx.append(variables[bestVar])
                 variables=sp.delete(variables,bestVar)
@@ -648,14 +637,12 @@ class GMMFeaturesSelection(GMM):
         ## Return the final value
         return idx,criterionBestVal
 
-    def backward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus):
+    def backward_selection(self, samples, labels, criterion, maxvar, kfold, model_pre_cv, ncpus):
         """
             Function that selects the most discriminative variables according to a backward search
             Inputs:
                 samples, labels:  the training samples and their labels
                 criterion:        the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).
-                stopMethod:       the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
-                delta :           the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
                 maxvar:           maximum number of extracted variables.
                 kfold:            k-folds for the cross-validation.
                 model_pre_cv:     GMM models for each CV.
@@ -700,29 +687,24 @@ class GMMFeaturesSelection(GMM):
                 criterionVal = compute_divKL('backward',idx,self,idx)
 
 
-            # Select the variable that provides the highest loocv
+            # Select the variable lowering the less the criterion
             worstVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
-            criterionBestVal.append(criterionVal[worstVar])    # save criterion value
+            criterionBestVal.append(criterionVal[worstVar])   # save criterion value
 
-            if (stopMethod=='variation') and (((criterionBestVal[-2]-criterionBestVal[-1])/criterionBestVal[-2]*100) < delta):
-                criterionBestVal.pop()
-                break
-            else:
-                mask           = sp.ones(len(idx), dtype=bool)
-                mask[worstVar] = False
-                idx            = idx[mask] # delete the selected variable of the pool
+            # Delete the identified variable
+            mask           = sp.ones(len(idx), dtype=bool)
+            mask[worstVar] = False
+            idx            = idx[mask] # delete the selected variable of the pool
 
         ## Return the final value
         return idx,criterionBestVal
 
-    def floating_forward_selection(self, samples, labels, criterion, stopMethod, delta, maxvar, kfold, model_pre_cv, ncpus):
+    def floating_forward_selection(self, samples, labels, criterion, maxvar, kfold, model_pre_cv, ncpus):
         """
             Function that selects the most discriminative variables according to a floating forward search
             Inputs:
                 samples, labels:  the training samples and their labels
                 criterion:        the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).
-                stopMethod:       the stopping criterion. It can be either 'maxVar' to continue until maxvar variables are selected or either 'variation' to continue until variation of criterion function are less than delta.
-                delta :           the minimal improvement in percentage when a variable is added to the pool, the algorithm stops if the improvement is lower than delta.
                 maxvar:           maximum number of extracted variables.
                 kfold:            k-folds for the cross-validation.
                 model_pre_cv:     GMM models for each CV.
@@ -777,11 +759,9 @@ class GMMFeaturesSelection(GMM):
             if nbSelectFeat <= len(criterionBestVal) and criterionVal[bestVar] < criterionBestVal[nbSelectFeat-1]:
                 idx       = idxBestSets[nbSelectFeat-1][0]
                 variables = idxBestSets[nbSelectFeat-1][1]
-                # print sp.sort(idx)," jump"
             else:
 
                 idx.append(variables[bestVar])
-                # print sp.sort(idx)
                 variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
                 if nbSelectFeat > len(criterionBestVal):
                     criterionBestVal.append(criterionVal[bestVar])   # save criterion value
@@ -790,9 +770,7 @@ class GMMFeaturesSelection(GMM):
                     criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
                     idxBestSets[nbSelectFeat-1] = (list(idx),variables)
 
-                # print "add ",idx
                 flagBacktrack = True
-
                 while flagBacktrack and nbSelectFeat > 2:
 
                     # Compute criterion function
@@ -823,7 +801,6 @@ class GMMFeaturesSelection(GMM):
                         nbSelectFeat -= 1
                         variables = sp.sort( sp.append(variables,idx[bestVar]) )
                         del idx[bestVar]
-                        # print "del ", idx
 
                         criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
                         idxBestSets[nbSelectFeat-1] = (list(idx),variables)
