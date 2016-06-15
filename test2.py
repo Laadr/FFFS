@@ -48,21 +48,21 @@ idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='divKL', varNb
 yp     = model.predict_gmm(xtest,featIdx=idx)[0]
 j      = sp.where(yp.ravel()==ytest.ravel())[0]
 OA     = (j.size*100.0)/ytest.size
-print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
+print "\nResults\n"
 print "Processing time: ", time.time()-ts
 print "Selected features: ", idx
 print "Evolution of accuracy during selection: ", selectionOA
 print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var
 
-# # 5-CV
-# ts     = time.time()
-# idx    = hsic.HSIC_selection(xtrain,ytrain,0.05,False)
-# yp     = model.predict_gmm(xtest,featIdx=sp.sort(idx[-4:]),tau=None)[0]
-# j      = sp.where(yp.ravel()==ytest.ravel())[0]
-# OA     = (j.size*100.0)/ytest.size
-# print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
-# print "Processing time: ", time.time()-ts
-# print "Selected features: ", sp.sort(idx[-4:])
-# print "Final accuracy: ", OA
-# print "Pertinent features (by construction): ", var
+# 5-CV
+ts     = time.time()
+idx    = hsic.HSIC_selection(xtrain,ytrain,0.05,False)
+yp     = model.predict_gmm(xtest,featIdx=sp.sort(idx[-4:]))[0]
+j      = sp.where(yp.ravel()==ytest.ravel())[0]
+OA     = (j.size*100.0)/ytest.size
+print "\nResults with HSIC selection\n"
+print "Processing time: ", time.time()-ts
+print "Selected features: ", sp.sort(idx[-4:])
+print "Final accuracy: ", OA
+print "Pertinent features (by construction): ", var
