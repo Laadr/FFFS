@@ -33,7 +33,9 @@ del x,y
 
 model    = npfs.GMMFeaturesSelection()
 model.learn_gmm(xtrain, ytrain)
+ts     = time.time()
 yp       = model.predict_gmm(xtest)[0]
+print "Processing time: ", time.time()-ts
 yp.shape = ytest.shape
 t        = sp.where(yp==ytest)[0]
 print "Accuracy without selection: ", float(t.size)/ytest.size
@@ -41,15 +43,15 @@ print "Accuracy without selection: ", float(t.size)/ytest.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='JM', maxvar=4,nfold=5)
-idx.sort()
+idx,selectionOA = model.selection('SFFS',xtrain, ytrain,criterion='divKL', varNb=4,nfold=5)
+# idx.sort()
 yp     = model.predict_gmm(xtest,featIdx=idx)[0]
 j      = sp.where(yp.ravel()==ytest.ravel())[0]
 OA     = (j.size*100.0)/ytest.size
 print "\nResults for 5-CV with accuracy as criterion and forward selection\n"
 print "Processing time: ", time.time()-ts
 print "Selected features: ", idx
-# print "Evolution of accuracy during selection: ", selectionOA
+print "Evolution of accuracy during selection: ", selectionOA
 print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var
 
