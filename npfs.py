@@ -635,12 +635,9 @@ class GMMFeaturesSelection(GMM):
             bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
             criterionBestVal.append(criterionVal[bestVar])   # save criterion value
 
-            if nbSelectFeat==0:
-                idx.append(variables[bestVar])           # add the selected variables to the pool
-                variables = sp.delete(variables,bestVar) # remove the selected variables from the initial set
-            else:
-                idx.append(variables[bestVar])
-                variables=sp.delete(variables,bestVar)
+            idx.append(variables[bestVar])           # add the selected variables to the pool
+            variables = sp.delete(variables,bestVar) # remove the selected variables from the initial set
+
             nbSelectFeat += 1
 
         ## Return the final value
