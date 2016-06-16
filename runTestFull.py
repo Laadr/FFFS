@@ -17,15 +17,15 @@ C    = len(sp.unique(y))
 print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes: ",C,"\n"
 
 
-ntrial         = 2
+ntrial = 20
 
-Nts        = [(50,False)]#, (100,False), (200,False), (400,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
+Nts = [(50,False), (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
 
-param_grid_gmm = [0.01, 0.1, 1, 10, 100, 1000, 10000]
+param_grid_gmm = [0.01, 0.1, 1, 10, 100, 1000, 10000, 100000]
 
 svmTest    = True
 param_grid_svm = [
-  {'C': [1, 10, 100, 1000], 'kernel': ['linear']},
+  {'C': [0.1, 1, 10, 100, 1000], 'kernel': ['linear']},
   # {'C': [1, 10, 100, 1000], 'gamma': [0.001, 0.0001], 'kernel': ['rbf']},
  ]
 
@@ -78,18 +78,18 @@ for Nt,stratification in Nts:
             model.learn_gmm(xtrain[trainInd,:], ytrain[trainInd])
 
             for i, tau in enumerate(param_grid_gmm):
-                yp = model.predict(xtrain[testInd,:], tau=tau)[0]
+                yp = model.predict_gmm(xtrain[testInd,:], tau=tau)[0]
 
                 confMatrix.compute_confusion_matrix(yp,ytrain[testInd])
                 kappaGrid[i] += confMatrix.get_kappa()
         tau = param_grid_gmm[sp.argmax(kappaGrid)]
-
+        param = tau
         model.learn_gmm(xtrain, ytrain)
         processingTime[0] = time.time()-ts
 
         # Prediction
         ts = time.time()
-        yp = model.predict(xtest, tau=tau)[0]
+        yp = model.predict_gmm(xtest, tau=tau)[0]
         processingTime[1] = time.time()-ts
 
         # Evaluation of results
@@ -105,13 +105,15 @@ for Nt,stratification in Nts:
             tt = time.time()
             cv = StratifiedKFold(ytrain.ravel(), n_folds=5, shuffle=True, random_state=0)
             grid = GridSearchCV(SVC(), param_grid=param_grid_svm, cv=cv,n_jobs=-1)
+            grid.fit(xtrain,ytrain.ravel())
+            param_svm = grid.best_params_
             clf = grid.best_estimator_
             processingTime_svm[0] = time.time()-tt
 
             # Prediction
             tt = time.time()
             yp = clf.predict(xtest).reshape(ytest.shape)
-            processingTime[1] = time.time()-tt
+            processingTime_svm[1] = time.time()-tt
 
             # Evaluation of results
             confMatrix.compute_confusion_matrix(yp,ytest)
@@ -122,14 +124,16 @@ for Nt,stratification in Nts:
         results.append((OA,kappa,F1Mean,processingTime))
         printFile.write("\nResults with all features and GMM \n\n")
         printFile.write("Processing time: "+str(processingTime)+"\n")
+        printFile.write("Tau: "+str(param)+"\n")
         printFile.write("Final accuracy: "+str(OA)+"\n")
         printFile.write("Final kappa: "+str(kappa)+"\n")
         printFile.write("Final F1-score mean: "+str(F1Mean)+"\n")
 
         if svmTest:
-           results_svm.append((OA_svm,kappa_svm,F1Mean_svm,processingTime_svm))
+            results_svm.append((OA_svm,kappa_svm,F1Mean_svm,processingTime_svm))
             printFile.write("\nResults with all features and SVM \n\n")
             printFile.write("Processing time: "+str(processingTime_svm)+"\n")
+            printFile.write("Parameters: "+str(param_svm)+"\n")
             printFile.write("Final accuracy: "+str(OA_svm)+"\n")
             printFile.write("Final kappa: "+str(kappa_svm)+"\n")
             printFile.write("Final F1-score mean: "+str(F1Mean_svm)+"\n")
