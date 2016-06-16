@@ -63,6 +63,6 @@ j      = sp.where(yp.ravel()==ytest.ravel())[0]
 OA     = (j.size*100.0)/ytest.size
 print "\nResults with HSIC selection\n"
 print "Processing time: ", time.time()-ts
-print "Selected features: ", sp.sort(idx[-4:])
+print "Selected features: ", idx[-4:]
 print "Final accuracy: ", OA
 print "Pertinent features (by construction): ", var

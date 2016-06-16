@@ -4,6 +4,7 @@ import scipy as sp
 from sklearn.cross_validation import train_test_split, StratifiedKFold
 from sklearn.grid_search import GridSearchCV
 from sklearn.svm import SVC
+from sklearn import preprocessing
 import time
 import pickle
 
@@ -17,15 +18,15 @@ C    = len(sp.unique(y))
 print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes: ",C,"\n"
 
 
-ntrial         = 2
+ntrial = 2
 
-Nts        = [(50,False)]#, (100,False), (200,False), (400,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
+Nts = [(50,False)]#, (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
 
-param_grid_gmm = [0.01, 0.1, 1, 10, 100, 1000, 10000]
+param_grid_gmm = [0.01, 0.1, 1, 10, 100, 1000, 10000, 100000]
 
 svmTest    = True
 param_grid_svm = [
-  {'C': [1, 10, 100, 1000], 'kernel': ['linear']},
+  {'C': [0.1, 1, 10, 100, 1000], 'kernel': ['linear']},
   # {'C': [1, 10, 100, 1000], 'gamma': [0.001, 0.0001], 'kernel': ['rbf']},
  ]
 
@@ -53,7 +54,7 @@ for Nt,stratification in Nts:
 
         # Change training set
         if stratification:
-            xtrain, xtest, ytrain, ytest = train_test_split(X, y, train_size=Nt, random_state=0, stratify=y)
+            xtrain, xtest, ytrain, ytest = train_test_split(X, y, train_size=Nt, random_state=i, stratify=y)
         else:
             sp.random.seed(i)
             xtrain = sp.empty((0,X.shape[1]))
@@ -103,6 +104,8 @@ for Nt,stratification in Nts:
         if svmTest:
             # Training
             tt = time.time()
+            scaler = preprocessing.StandardScaler().fit(xtrain)
+            xtrain = scaler.transform(xtrain)
             cv = StratifiedKFold(ytrain.ravel(), n_folds=5, shuffle=True, random_state=0)
             grid = GridSearchCV(SVC(), param_grid=param_grid_svm, cv=cv,n_jobs=-1)
             clf = grid.best_estimator_
@@ -110,6 +113,7 @@ for Nt,stratification in Nts:
 
             # Prediction
             tt = time.time()
+            xtest = scaler.transform(xtest)
             yp = clf.predict(xtest).reshape(ytest.shape)
             processingTime[1] = time.time()-tt
 

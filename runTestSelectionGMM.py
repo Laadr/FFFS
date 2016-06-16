@@ -43,7 +43,7 @@ for Nt,stratification in Nts:
 
                 # Change training set
                 if stratification:
-                    xtrain, xtest, ytrain, ytest = train_test_split(X, y, train_size=Nt, random_state=0, stratify=y)
+                    xtrain, xtest, ytrain, ytest = train_test_split(X, y, train_size=Nt, random_state=i, stratify=y)
                 else:
                     sp.random.seed(i)
                     xtrain = sp.empty((0,X.shape[1]))

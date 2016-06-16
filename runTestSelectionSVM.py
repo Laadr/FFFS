@@ -4,6 +4,7 @@ import scipy as sp
 from sklearn.cross_validation import train_test_split, StratifiedKFold
 from sklearn.grid_search import GridSearchCV
 from sklearn.svm import SVC
+from sklearn import preprocessing
 import time
 import pickle
 
@@ -58,7 +59,7 @@ for Nt,stratification in Nts:
 
                 # Change training set
                 if stratification:
-                    xtrain, xtest, ytrain, ytest = train_test_split(X, y, train_size=Nt, random_state=0, stratify=y)
+                    xtrain, xtest, ytrain, ytest = train_test_split(X, y, train_size=Nt, random_state=i, stratify=y)
                 else:
                     sp.random.seed(i)
                     xtrain = sp.empty((0,X.shape[1]))
@@ -78,12 +79,15 @@ for Nt,stratification in Nts:
 
                 # SVM
                 tt = time.time()
+                scaler = preprocessing.StandardScaler().fit(xtrain)
+                xtrain = scaler.transform(xtrain)
                 cv = StratifiedKFold(ytrain.ravel(), n_folds=5, shuffle=True, random_state=0)
-                grid = GridSearchCV(SVC(), param_grid=param_grid_svm, cv=cv,n_jobs=-1)
+                grid = GridSearchCV(SVC(), param_grid=param_grid_svm, cv=cv,n_jobs=-1,refit=False)
                 grid.fit(xtrain[:,idx[:maxVar]], ytrain.ravel())
                 clf = grid.best_estimator_
                 processingTime = time.time()-tt
 
+                xtest = scaler.transform(xtest)
                 for k in xrange(minVar,maxVar+1):
                     clf.fit(xtrain[:,idx[:k]],ytrain.ravel())
                     yp = clf.predict(xtest[:,idx[:k]]).reshape(ytest.shape)
