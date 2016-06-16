@@ -76,7 +76,7 @@ def compute_JM(direction, variables, model, idx):
     JM = sp.zeros(variables.size)
     halfedLogdet  = sp.zeros((model.C,variables.size))
 
-    # Compute all possible update of det cov(idx)
+    # Compute all possible update of 0.5* log det cov(idx)
     if len(idx)==0:
         for c in xrange(model.C):
             for k,var in enumerate(variables):
@@ -90,7 +90,7 @@ def compute_JM(direction, variables, model, idx):
                 if direction=='forward':
                     alpha = model.cov[c,var,var] - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov,model.cov[c,var,:][idx].T) )
                 elif direction=='backward':
-                    alpha = 1/invCov[k,k]
+                    alpha = invCov[k,k] # it actually corresponds to 1/alpha from report
 
                 if alpha < eps:
                     alpha = eps
