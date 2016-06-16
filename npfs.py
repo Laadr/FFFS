@@ -412,18 +412,21 @@ class GMMFeaturesSelection(GMM):
         if featIdx is None:
             idx = range(testSamples.shape[1])
         else:
-            idx = featIdx
+            idx = list(featIdx)
 
         # Allocate storage for decomposition in eigenvalues
         if self.idxDecomp != idx:
             self.vp    = sp.empty((self.C,len(idx)))   # array of eigenvalues
             self.Q     = sp.empty((self.C,len(idx),len(idx))) # array of eigenvectors
+            flagDecomp = True
+        else:
+            flagDecomp = False
 
         # Start the prediction for each class
         for c in xrange(self.C):
             testSamples_c = testSamples[:,idx] - self.mean[c,idx]
 
-            if self.idxDecomp != idx:
+            if flagDecomp:
                 self.vp[c,:],self.Q[c,:,:],_ = self.decomposition(self.cov[c,idx,:][:,idx])
 
             regvp = self.vp[c,:] + tau
