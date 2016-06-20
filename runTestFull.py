@@ -18,15 +18,15 @@ C    = len(sp.unique(y))
 print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes: ",C,"\n"
 
 
-ntrial = 2
+ntrial = 20
 
-Nts = [(50,False)]#, (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
+Nts = [(50,False), (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
 
-param_grid_gmm = [0.01, 0.1, 1, 10, 100, 1000, 10000, 100000]
+param_grid_gmm = [0.01, 0.1, 1, 10, 100, 1000, 10000, 100000, 1000000]
 
 svmTest    = True
 param_grid_svm = [
-  {'C': [0.1, 1, 10, 100, 1000], 'kernel': ['linear']},
+  {'C': [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000], 'kernel': ['linear']},
   # {'C': [1, 10, 100, 1000], 'gamma': [0.001, 0.0001], 'kernel': ['rbf']},
  ]
 
@@ -125,7 +125,7 @@ for Nt,stratification in Nts:
             kappa_svm  = confMatrix.get_kappa()
             F1Mean_svm = confMatrix.get_F1Mean()
 
-        results.append((OA,kappa,F1Mean,processingTime))
+        results.append((OA,kappa,F1Mean,processingTime,tau))
         printFile.write("\nResults with all features and GMM \n\n")
         printFile.write("Processing time: "+str(processingTime)+"\n")
         printFile.write("Tau: "+str(param)+"\n")
@@ -134,7 +134,7 @@ for Nt,stratification in Nts:
         printFile.write("Final F1-score mean: "+str(F1Mean)+"\n")
 
         if svmTest:
-            results_svm.append((OA_svm,kappa_svm,F1Mean_svm,processingTime_svm))
+            results_svm.append((OA_svm,kappa_svm,F1Mean_svm,processingTime_svm,param_svm))
             printFile.write("\nResults with all features and SVM \n\n")
             printFile.write("Processing time: "+str(processingTime_svm)+"\n")
             printFile.write("Parameters: "+str(param_svm)+"\n")
