@@ -107,7 +107,7 @@ def compute_JM(direction, variables, model, idx):
                     logdet_ij    = sp.log(2*cs) # 2* because we want det of 2*cs
                     invCov = 1/cs
 
-                    bij    = md*invCov*md.T/8 + 0.5*( logdet_ij - halfedLogdet[i,k] - halfedLogdet[j,k] )
+                    bij    = md*invCov*md/8 + 0.5*( logdet_ij - halfedLogdet[i,k] - halfedLogdet[j,k] )
                     JM[k]  += sp.sqrt(2*(1-sp.exp(-bij)))*model.prop[i]*model.prop[j]
 
     else:
@@ -116,7 +116,7 @@ def compute_JM(direction, variables, model, idx):
                 cs         = (model.cov[i,idx,:][:,idx]+model.cov[j,idx,:][:,idx])/2
                 vp,Q,rcond = model.decomposition(cs)
                 invCov     = sp.dot(Q,((1/vp)*Q).T)
-                det        = sp.sum(sp.log(vp))
+                logdet        = sp.sum(sp.log(vp))
 
                 for k,var in enumerate(variables):
                     md      = (model.mean[i,idx]-model.mean[j,idx])
@@ -130,7 +130,7 @@ def compute_JM(direction, variables, model, idx):
                         alpha = c1 - sp.dot(c2, sp.dot(invCov,c2.T) )
                         if alpha < eps:
                             alpha = eps
-                        logdet_ij     = det + sp.log(alpha * 2**(len(id_t)) )  # *2^d because we want det of 2*cs
+                        logdet_ij     = logdet + sp.log(alpha * 2**(len(id_t)) )  # *2^d because we want det of 2*cs
 
                         md_new   = (model.mean[i,id_t]-model.mean[j,id_t])
                         row_feat = sp.hstack((-1/alpha * sp.dot(c2,invCov), 1/alpha))
@@ -140,7 +140,7 @@ def compute_JM(direction, variables, model, idx):
                         alpha     = 1/invCov[k,k]
                         if alpha < eps:
                             alpha = eps
-                        logdet_ij = det + sp.log(2**(len(idx)-1) / alpha)  # *2^d because we want det of 2*cs
+                        logdet_ij = logdet + sp.log(2**(len(idx)-1) / alpha)  # *2^d because we want det of 2*cs
 
                         row_feat   = invCov[k,:]
                         cst_feat   = - alpha * (sp.dot(row_feat,md.T)**2)
