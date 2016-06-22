@@ -212,7 +212,6 @@ def compute_divKL(direction, variables, model, idx):
                     if alpha < eps:
                         alpha = eps
 
-                    print sp.outer( sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) , sp.dot(model.cov[c,var,:][idx],invCov[c,:,:]) )
                     invCov_update[c,:-1,:][:,:-1] = invCov[c,:,:] + 1/alpha * sp.outer( sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) , sp.dot(model.cov[c,var,:][idx],invCov[c,:,:]) )
                     invCov_update[c,:-1,-1]       = - 1/alpha * sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T)
                     invCov_update[c,-1,:-1]       = - 1/alpha * sp.dot(model.cov[c,var,:][idx],invCov[c,:,:])
@@ -544,6 +543,7 @@ class GMMFeaturesSelection(GMM):
             ## Pre-update the models
             model_pre_cv = [GMMFeaturesSelection(d=self.d, C=self.C) for i in xrange(nfold)]
             for k, (trainInd,testInd) in enumerate(kfold):
+
                 # Get training data for this cv round
                 testSamples,testLabels = samples[testInd,:], labels[testInd]
                 nk = float(testLabels.size)
