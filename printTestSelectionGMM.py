@@ -9,7 +9,7 @@ import npfs as npfs
 data_name  = 'aisa'
 ntrial = 20
 
-Nts        = [(50,'equalized'), (100,'equalized'), (200,'equalized'), (400,'equalized'), (0.025,'stratified'), (0.05,'stratified')]#, (0.3,True)] # Nb of samples per class in training set
+Nts        = [(50,'equalized')]#, (100,'equalized'), (200,'equalized'), (400,'equalized'), (0.025,'stratified'), (0.05,'stratified')]#, (0.3,True)] # Nb of samples per class in training set
 criterions = ['accuracy', 'kappa', 'F1Mean', 'JM', 'divKL']
 
 mean_forward_time = sp.zeros( (len(Nts)) )
@@ -32,10 +32,10 @@ for criterion in criterions:
             filename2 = data_name+'_SFFS_spls_'+str(Nt)+'_equalized_trials_'+str(ntrial)+'_'+criterion
             labelExtension = " sampling equalized with "+str(Nt)+" samples"
 
-        f = open('Results/'+filename + '.pckl')
+        f = open('Results/'+filename + '_gmm.pckl')
         res1 = pickle.load(f)
         f.close()
-        f = open('Results/'+filename2 + '.pckl')
+        f = open('Results/'+filename2 + '_gmm.pckl')
         res2 = pickle.load(f)
         f.close()
 
@@ -43,9 +43,11 @@ for criterion in criterions:
         # for i in xrange(len(res1)):
         #     p += sp.stats.ranksums(res1[1][1],res2[1][1])[1]
         # print "Wilcoxon rank-sum statistic (p-value): ", p
-        maxVar = len(res1[0][1])
+        minVar = len(res1[0][0]) - len(res1[0][1]) + 1
+        nbTest = len(res1[0][1])
+
         plt.subplot(311)
-        x = range(5,5+maxVar)
+        x = range(minVar,minVar+nbTest+1)
         dataTmp = sp.asarray([res1[j][1].ravel() for j in xrange(len(res1))])
         y = sp.asarray([sp.mean(dataTmp[:,k])/100 for k in xrange(len(x))])
         error = sp.asarray([sp.std(dataTmp[:,k])/100 for k in xrange(len(x))])
@@ -59,15 +61,15 @@ for criterion in criterions:
 
         plt.subplot(312)
         dataTmp = sp.asarray([res1[j][2].ravel() for j in xrange(len(res1))])
-        plt.plot(range(5,maxVar+5), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='Forward '+labelExtension)
+        plt.plot(range(minVar,nbTest+minVar+1), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='Forward '+labelExtension)
         dataTmp = sp.asarray([res2[j][2].ravel() for j in xrange(len(res1))])
-        plt.plot(range(5,maxVar+5), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='SFFS '+labelExtension)
+        plt.plot(range(minVar,nbTest+minVar+1), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='SFFS '+labelExtension)
 
         plt.subplot(313)
         dataTmp = sp.asarray([res1[j][3].ravel() for j in xrange(len(res1))])
-        plt.plot(range(5,maxVar+5), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='Forward '+labelExtension)
+        plt.plot(range(minVar,nbTest+minVar+1), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='Forward '+labelExtension)
         dataTmp = sp.asarray([res2[j][3].ravel() for j in xrange(len(res1))])
-        plt.plot(range(5,maxVar+5), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='SFFS '+labelExtension)
+        plt.plot(range(minVar,nbTest+minVar+1), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='SFFS '+labelExtension)
 
         dataTmp = sp.asarray([res1[j][4] for j in xrange(len(res1))])
         mean_forward_time[i] = sp.mean(dataTmp)
@@ -102,7 +104,7 @@ for criterion in criterions:
     plt.title(r'Classification score')
 
     # plt.tight_layout()
-    plt.savefig('Fig/'+data_name+'_trials_'+str(ntrial)+'_'+criterion, bbox_inches='tight')
+    plt.savefig('Fig/'+data_name+'_trials_'+str(ntrial)+'_'+criterion, bbox_inches='tight', format='pdf')
 
     plt.clf()
     index = sp.arange(len(Nts))
@@ -120,4 +122,4 @@ for criterion in criterions:
     plt.title(r'Computational time with '+str(len(res1[0][0]))+' features')
 
     plt.tight_layout()
-    plt.savefig('Fig/time_'+data_name+'_trials_'+str(ntrial)+'_'+criterion)
+    plt.savefig('Fig/time_'+data_name+'_trials_'+str(ntrial)+'_'+criterion, format='pdf')

@@ -27,7 +27,7 @@ methods    = ['forward','SFFS']
 criterions = ['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
 
 param_grid_svm = [
-  {'C': [1, 10, 100, 1000], 'kernel': ['linear']},
+  {'C': [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000], 'kernel': ['linear']},
   # {'C': [1, 10, 100, 1000], 'gamma': [0.001, 0.0001], 'kernel': ['rbf']},
  ]
 

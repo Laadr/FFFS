@@ -17,7 +17,7 @@ print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes
 
 ntrial = 2
 minVar = 2
-maxVar = 8
+maxVar = 5
 
 Nts        = [(50,False)]#, (100,False), (200,False), (400,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
 methods    = ['forward','SFFS']
@@ -36,6 +36,7 @@ for Nt,stratification in Nts:
 
             results = []
             confMatrix = npfs.ConfusionMatrix()
+            model = npfs.GMMFeaturesSelection()
 
             for i in xrange(ntrial):
                 processingTime  = 0.
