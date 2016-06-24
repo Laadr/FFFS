@@ -206,20 +206,20 @@ def compute_divKL(direction, variables, model, idx):
                 mask    = sp.ones(len(idx), dtype=bool)
                 mask[k] = False
 
-            for c in xrange(model.C):
-                if direction=='forward':
+            if direction=='forward':
+                for c in xrange(model.C):
                     alpha = model.cov[c,var,var] - sp.dot(model.cov[c,var,:][idx], sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) )
                     if alpha < eps:
                         alpha = eps
 
-                    invCov_update[c,:-1,:][:,:-1] = invCov[c,:,:] + 1/alpha * sp.dot( sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) , sp.dot(model.cov[c,var,:][idx],invCov[c,:,:]) )
-                    invCov_update[c,-1,:-1]       = - 1/alpha * sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T)
-                    invCov_update[c,:-1,-1]       = - 1/alpha * sp.dot(model.cov[c,var,:][idx],invCov[c,:,:])
+                    invCov_update[c,:-1,:][:,:-1] = invCov[c,:,:] + 1/alpha * sp.outer( sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T) , sp.dot(model.cov[c,var,:][idx],invCov[c,:,:]) )
+                    invCov_update[c,:-1,-1]       = - 1/alpha * sp.dot(invCov[c,:,:],model.cov[c,var,:][idx].T)
+                    invCov_update[c,-1,:-1]       = - 1/alpha * sp.dot(model.cov[c,var,:][idx],invCov[c,:,:])
                     invCov_update[c,-1,-1]        = 1/alpha
 
-                elif direction=='backward':
-                    invCov_update[c,:,:] = invCov[c,mask,mask] - 1/invCov[c,k,k] * sp.dot(model.cov[c,var,:][idx].T , model.cov[c,var,:][idx])
-
+            elif direction=='backward':
+                for c in xrange(model.C):
+                    invCov_update[c,:,:] = invCov[c,mask,:][:,mask] - 1/invCov[c,k,k] * sp.outer(model.cov[c,var,:][id_t] , model.cov[c,var,:][id_t])
 
             for i in xrange(model.C):
                 for j in xrange(i+1,model.C):
@@ -543,6 +543,7 @@ class GMMFeaturesSelection(GMM):
             ## Pre-update the models
             model_pre_cv = [GMMFeaturesSelection(d=self.d, C=self.C) for i in xrange(nfold)]
             for k, (trainInd,testInd) in enumerate(kfold):
+
                 # Get training data for this cv round
                 testSamples,testLabels = samples[testInd,:], labels[testInd]
                 nk = float(testLabels.size)
