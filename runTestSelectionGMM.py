@@ -15,11 +15,11 @@ C    = len(sp.unique(y))
 print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes: ",C,"\n"
 
 
-ntrial = 2
+ntrial = 20
 minVar = 2
-maxVar = 5
+maxVar = 25
 
-Nts        = [(50,False)]#, (100,False), (200,False), (400,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
+Nts        = [(50,False), (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
 methods    = ['forward','SFFS']
 criterions = ['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
 
@@ -32,7 +32,7 @@ for Nt,stratification in Nts:
             else:
                 filename = data_name+'_'+method+'_spls_'+str(Nt)+'_equalized_trials_'+str(ntrial)+'_'+criterion
 
-            printFile = open('Output/'+filename+'.txt','w')
+            printFile = open('Output/'+filename+'_gmm.txt','w')
 
             results = []
             confMatrix = npfs.ConfusionMatrix()
