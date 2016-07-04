@@ -19,9 +19,9 @@ ntrial = 20
 minVar = 2
 maxVar = 25
 
-Nts        = [(50,False), (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
+Nts        = [(50,False), (100,False), (200,False), (0.005,True)]#[(50,False), (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
 methods    = ['forward','SFFS']
-criterions = ['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
+criterions = ['divKL']#['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
 
 for Nt,stratification in Nts:
     for criterion in criterions:
