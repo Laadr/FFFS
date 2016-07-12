@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 import npfs as npfs
 
 data_name  = 'aisa'
-ntrial = 20
+ntrial = 1
 
-Nts        = [(50,'equalized'), (100,'equalized'), (200,'equalized'), (0.005,'stratified'), (0.01,'stratified'), (0.025,'stratified')]#, (0.3,True)] # Nb of samples per class in training set
-criterions = ['accuracy', 'kappa', 'F1Mean', 'JM', 'divKL']
+Nts        = [(50,'equalized')]#, (100,'equalized'), (200,'equalized'), (0.005,'stratified'), (0.01,'stratified'), (0.025,'stratified')]#, (0.3,True)] # Nb of samples per class in training set
+criterions = ['kappa']#['accuracy', 'kappa', 'F1Mean', 'JM', 'divKL']
 
 mean_forward_time = sp.zeros( (len(Nts)) )
 std_forward_time  = sp.zeros( (len(Nts)) )

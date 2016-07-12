@@ -18,11 +18,11 @@ C    = len(sp.unique(y))
 print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes: ",C,"\n"
 
 
-ntrial = 2
+ntrial = 20
 minVar = 2
-maxVar = 8
+maxVar = 25
 
-Nts        = [(50,False)]#, (100,False), (200,False), (400,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
+Nts        = [(50,False), (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
 methods    = ['forward','SFFS']
 criterions = ['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
 
@@ -46,9 +46,7 @@ for Nt,stratification in Nts:
             res_gmm = pickle.load(f)
             f.close()
 
-            printFile = open('Output/'+filename+'.txt','w')
-
-            printFile.write("Nb of training samples: "+str(ytrain.shape[0])+" Nb of test samples: "+str(ytest.shape[0])+"\n\n")
+            printFile = open('Output/'+filename+'_svm.txt','w')
 
             results = []
             confMatrix = npfs.ConfusionMatrix()
@@ -84,11 +82,12 @@ for Nt,stratification in Nts:
                 cv = StratifiedKFold(ytrain.ravel(), n_folds=5, shuffle=True, random_state=0)
                 grid = GridSearchCV(SVC(), param_grid=param_grid_svm, cv=cv,n_jobs=-1,refit=False)
                 grid.fit(xtrain[:,idx[:maxVar]], ytrain.ravel())
-                clf = grid.best_estimator_
+                clf_params = grid.best_params_
                 processingTime = time.time()-tt
 
                 xtest = scaler.transform(xtest)
                 for k in xrange(minVar,maxVar+1):
+                    clf = SVC(kernel=clf_params['kernel'],C=clf_params['C'])
                     clf.fit(xtrain[:,idx[:k]],ytrain.ravel())
                     yp = clf.predict(xtest[:,idx[:k]]).reshape(ytest.shape)
 

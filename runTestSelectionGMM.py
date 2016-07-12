@@ -5,7 +5,7 @@ from sklearn.cross_validation import train_test_split, StratifiedKFold
 import time
 import pickle
 
-sp.set_printoptions(precision=3)
+sp.set_printoptions(precision=10)
 
 data_name      = 'aisa'
 data = sp.load('Data/'+data_name+'.npz')
@@ -15,13 +15,13 @@ C    = len(sp.unique(y))
 print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes: ",C,"\n"
 
 
-ntrial = 20
+ntrial = 1
 minVar = 2
-maxVar = 25
+maxVar = 10
 
-Nts        = [(0.005,True)]#[(50,False), (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
-methods    = ['SFFS']#['forward','SFFS']
-criterions = ['JM']#['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
+Nts        = [(50,False)]#, (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
+methods    = ['forward','SFFS']
+criterions = ['kappa']#['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
 
 for Nt,stratification in Nts:
     for criterion in criterions:
@@ -62,18 +62,24 @@ for Nt,stratification in Nts:
                 model.learn_gmm(xtrain, ytrain)
 
                 ts = time.time()
-                idx,criterionEvolution = model.selection(method,xtrain,ytrain,criterion=criterion,varNb=maxVar,nfold=5,random_state=0)
+                idx,criterionEvolution,bestSets = model.selection(method,xtrain,ytrain,criterion=criterion,varNb=maxVar,nfold=5,random_state=0)
                 processingTime = time.time()-ts
 
                 for k in xrange(minVar,maxVar+1):
-                    yp = model.predict_gmm(xtest,featIdx=idx[:k])[0]
+                    if method == 'SFFS':
+                        yp = model.predict_gmm(xtest,featIdx=bestSets[k])[0]
+                    else:
+                        yp = model.predict_gmm(xtest,featIdx=idx[:k])[0]
 
                     confMatrix.compute_confusion_matrix(yp,ytest)
                     OA[k-minVar,0]     = confMatrix.get_OA()*100
                     kappa[k-minVar,0]  = confMatrix.get_kappa()
                     F1Mean[k-minVar,0] = confMatrix.get_F1Mean()
 
-                results.append((sp.asarray(idx),OA,kappa,F1Mean,processingTime,criterionEvolution))
+                if method == 'SFFS':
+                    results.append((sp.asarray(idx),OA,kappa,F1Mean,processingTime,criterionEvolution,bestSets))
+                else:
+                    results.append((sp.asarray(idx),OA,kappa,F1Mean,processingTime,criterionEvolution))
                 printFile.write("\nResults for 5-CV with " + criterion + " as criterion and " + method + " selection \n\n")
                 printFile.write("Processing time: "+str(processingTime)+"\n")
                 printFile.write("Selected features and accuracy: \n"+str(idx)+"\n")
