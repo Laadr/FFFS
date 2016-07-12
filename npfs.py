@@ -572,9 +572,9 @@ class GMMFeaturesSelection(GMM):
             model_pre_cv = None
 
         if direction == 'forward':
-            return self.forward_selection(samples, labels, criterion, varNb, kfold, model_pre_cv, ncpus)
+            return self.forward_selection(samples, labels, criterion, varNb, kfold, model_pre_cv, ncpus),_
         elif direction == 'backward':
-            return self.backward_selection(samples, labels, criterion, varNb, kfold, model_pre_cv, ncpus)
+            return self.backward_selection(samples, labels, criterion, varNb, kfold, model_pre_cv, ncpus),_
         elif direction == 'SFFS':
             return self.floating_forward_selection(samples, labels, criterion, varNb, kfold, model_pre_cv, ncpus)
 
@@ -813,4 +813,4 @@ class GMMFeaturesSelection(GMM):
                         flagBacktrack = False
 
         ## Return the final value
-        return idx,criterionBestVal
+        return idx,criterionBestVal,[i[0] for i in idxBestSets]
