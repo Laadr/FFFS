@@ -480,7 +480,6 @@ class GMMFeaturesSelection(GMM):
 
             if len(id_t)==1:
                 scores[:,c] = sp.sum(testSamples_c*testSamples_c,axis=1)/self.cov[c,id_t,id_t] + sp.log(self.cov[c,id_t,id_t]) - self.logprop[c]
-
             else:
                 if direction=='forward':
                     alpha     = self.cov[c,newFeat[1],newFeat[1]] - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
@@ -806,7 +805,7 @@ class GMMFeaturesSelection(GMM):
 
                     if criterionVal[bestVar] > criterionBestVal[nbSelectFeat-2]:
                         nbSelectFeat -= 1
-                        variables = sp.sort( sp.append(variables,idx[bestVar]) )
+                        variables = sp.append(variables,idx[bestVar])
                         del idx[bestVar]
 
                         criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
