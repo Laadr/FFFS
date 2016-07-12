@@ -47,7 +47,7 @@ for criterion in criterions:
         nbTest = len(res1[0][1])
 
         plt.subplot(311)
-        x = range(minVar,minVar+nbTest+1)
+        x = range(minVar,minVar+nbTest)
         dataTmp = sp.asarray([res1[j][1].ravel() for j in xrange(len(res1))])
         y = sp.asarray([sp.mean(dataTmp[:,k])/100 for k in xrange(len(x))])
         error = sp.asarray([sp.std(dataTmp[:,k])/100 for k in xrange(len(x))])
@@ -61,15 +61,15 @@ for criterion in criterions:
 
         plt.subplot(312)
         dataTmp = sp.asarray([res1[j][2].ravel() for j in xrange(len(res1))])
-        plt.plot(range(minVar,nbTest+minVar+1), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='Forward '+labelExtension)
+        plt.plot(range(minVar,nbTest+minVar), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='Forward '+labelExtension)
         dataTmp = sp.asarray([res2[j][2].ravel() for j in xrange(len(res1))])
-        plt.plot(range(minVar,nbTest+minVar+1), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='SFFS '+labelExtension)
+        plt.plot(range(minVar,nbTest+minVar), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='SFFS '+labelExtension)
 
         plt.subplot(313)
         dataTmp = sp.asarray([res1[j][3].ravel() for j in xrange(len(res1))])
-        plt.plot(range(minVar,nbTest+minVar+1), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='Forward '+labelExtension)
+        plt.plot(range(minVar,nbTest+minVar), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='Forward '+labelExtension)
         dataTmp = sp.asarray([res2[j][3].ravel() for j in xrange(len(res1))])
-        plt.plot(range(minVar,nbTest+minVar+1), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='SFFS '+labelExtension)
+        plt.plot(range(minVar,nbTest+minVar), [sp.mean(dataTmp[:,k]) for k in xrange(len(x))], label='SFFS '+labelExtension)
 
         dataTmp = sp.asarray([res1[j][4] for j in xrange(len(res1))])
         mean_forward_time[i] = sp.mean(dataTmp)
@@ -104,7 +104,7 @@ for criterion in criterions:
     plt.title(r'Classification score')
 
     # plt.tight_layout()
-    plt.savefig('Fig/'+data_name+'_trials_'+str(ntrial)+'_'+criterion, bbox_inches='tight', format='pdf')
+    plt.savefig('Fig/'+data_name+'_trials_'+str(ntrial)+'_'+criterion+'.pdf', bbox_inches='tight', format='pdf')
 
     plt.clf()
     index = sp.arange(len(Nts))
@@ -122,4 +122,4 @@ for criterion in criterions:
     plt.title(r'Computational time with '+str(len(res1[0][0]))+' features')
 
     plt.tight_layout()
-    plt.savefig('Fig/time_'+data_name+'_trials_'+str(ntrial)+'_'+criterion, format='pdf')
+    plt.savefig('Fig/time_'+data_name+'_trials_'+str(ntrial)+'_'+criterion+'.pdf', format='pdf')
