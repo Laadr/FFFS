@@ -15,13 +15,13 @@ C    = len(sp.unique(y))
 print "Nb of samples: ",X.shape[0]," Nb of features: ",X.shape[1],"Nb of classes: ",C,"\n"
 
 
-ntrial = 1
+ntrial = 20
 minVar = 2
-maxVar = 10
+maxVar = 25
 
-Nts        = [(50,False)]#, (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
-methods    = ['forward','SFFS']
-criterions = ['kappa']#['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
+Nts        = [(50,False), (100,False), (200,False), (0.005,True), (0.01,True), (0.025,True)] # Nb of samples per class in training set
+methods    = ['SFFS']#['forward','SFFS']
+criterions = ['accuracy', 'kappa', 'F1Mean','JM', 'divKL']
 
 for Nt,stratification in Nts:
     for criterion in criterions:
@@ -62,12 +62,12 @@ for Nt,stratification in Nts:
                 model.learn_gmm(xtrain, ytrain)
 
                 ts = time.time()
-                idx,criterionEvolution,bestSets = model.selection(method,xtrain,ytrain,criterion=criterion,varNb=maxVar,nfold=5,random_state=0)
+                idx, criterionEvolution, bestSets = model.selection(method,xtrain,ytrain,criterion=criterion,varNb=maxVar,nfold=5,random_state=0)
                 processingTime = time.time()-ts
 
                 for k in xrange(minVar,maxVar+1):
                     if method == 'SFFS':
-                        yp = model.predict_gmm(xtest,featIdx=bestSets[k])[0]
+                        yp = model.predict_gmm(xtest,featIdx=bestSets[k-1])[0]
                     else:
                         yp = model.predict_gmm(xtest,featIdx=idx[:k])[0]
 
