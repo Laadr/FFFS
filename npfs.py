@@ -19,7 +19,7 @@ def select_interval(criterionVal,meanVal=-0.1):
         Inputs:
             criterionVal: criterion function values for each band
         Output:
-            interval: indexes of bands included in the selected interval
+            start,stop: boundaries of the selected interval
     """
     # Set mean to meanVal
     data = criterionVal.ravel() - sp.mean(criterionVal.ravel()) - meanVal
@@ -32,11 +32,11 @@ def select_interval(criterionVal,meanVal=-0.1):
 
     # Select interval
     stop = sp.argmax(lindley)
-    i = 0
-    while ():
-        i
+    start = stop
+    while (start!=0)and(lindley[start-1]!=0):
+        start-=1
 
-    return
+    return start,stop
 
 def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx):
     """
@@ -629,6 +629,8 @@ class GMMFeaturesSelection(GMM):
 
         # Initialization
         nbSelectFeat     = 0                       # Initialization of the counter
+        variablesOrigin  = sp.arange(self.d)       # At step zero: d variables available
+        idxOrigin        = []                      # and no selected variable
         variables        = sp.arange(self.d)       # At step zero: d variables available
         idx              = []                      # and no selected variable
         criterionBestVal = []                      # list of the evolution the criterion function
@@ -660,11 +662,35 @@ class GMMFeaturesSelection(GMM):
                 criterionVal =  compute_divKL('forward',variables,self,idx)
 
             # Select the variable that provides the highest criterion value
-            bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
+            startInt,stopInt = select_interval(criterionVal)
             criterionBestVal.append(criterionVal[bestVar])   # save criterion value
 
-            idx.append(variables[bestVar])           # add the selected variables to the pool
-            variables = sp.delete(variables,bestVar) # remove the selected variables from the initial set
+            # Agregate interval
+            idxOrigin.append(variablesOrigin[startInt:stopInt+1])           # add the selected variables to the pool
+            variablesOrigin = sp.delete(variablesOrigin,[startInt:stopInt+1]) # remove the selected variables from the initial set
+            if stopInt!=startInt:
+                self.d = self.d - (stopInt-startInt)
+
+                tmp = self.mean
+                self.mean = sp.empty((self.C,self.d))
+                self.mean[:,:startInt]=tmp[:,:startInt]
+                self.mean[:,startInt+1:]=tmp[:,stopInt+1]
+                self.mean[:,startInt]=sp.mean(tmp[:,startInt:stopInt+1],axis=1)
+                del tmp
+
+                tmp = self.cov
+                self.cov = sp.empty((self.C,self.d,self.d))
+                self.cov[:,:startInt,:startInt] = tmp[:,:startInt,:startInt]
+                self.cov[:,:startInt,startInt+1:] = tmp[:,:startInt,stopInt+1:]
+                self.cov[:,startInt+1:,:startInt] = tmp[:,stopInt+1:,startInt:]
+                self.cov[:,startInt+1:,startInt+1:] = tmp[:,stopInt+1:,stopInt+1:]
+                self.cov[:,startInt+1,startInt+1] = sp.mean( sp.mean(tmp[:,startInt:stopInt+1,startInt:stopInt+1],axis=1), axis=1)
+
+                agreg = sp.mean(self.cov[:,startInt:stopInt+1,:], axis=1)
+                self.cov[:,startInt+1,:startInt] = agreg[:startInt]
+                self.cov[:,startInt+1,startInt+1:] = agreg[stopInt+1:]
+                self.cov[:,startInt+1,:] = self.cov[:,:,startInt+1]
+                del tmp, agreg
 
             nbSelectFeat += 1
 
