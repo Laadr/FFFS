@@ -148,6 +148,8 @@ def compute_JM(direction, variables, model, idx):
                     temp = sp.dot(md, sp.dot(invCov,md.T) ) + cst_feat
 
                     bij = temp/8 + 0.5*(logdet_ij - halfedLogdet[i,k] - halfedLogdet[j,k] )
+                    if bij < eps:
+                        bij = eps
                     JM[k] += sp.sqrt(2*(1-sp.exp(-bij)))*model.prop[i]*model.prop[j]
 
     return JM
@@ -283,8 +285,8 @@ class ConfusionMatrix(object):
 class GMM(object):
 
     def __init__(self, d=0, C=0):
-        self.nbSpl = sp.empty((C,1))   # array of number of samples in each class
-        self.prop  = sp.empty((C,1))   # array of proportion in training set
+        self.nbSpl = sp.empty((C))   # array of number of samples in each class
+        self.prop  = sp.empty((C))   # array of proportion in training set
         self.mean  = sp.empty((C,d))   # array of means
         self.cov   = sp.empty((C,d,d)) # array of covariance matrices
         self.C     = C                 # number of class
@@ -329,8 +331,8 @@ class GMM(object):
         self.d = samples.shape[1]   # Number of variables
 
         # Initialization
-        self.nbSpl     = sp.empty((self.C,1))   # Vector of number of samples for each class
-        self.prop      = sp.empty((self.C,1))   # Vector of proportion
+        self.nbSpl     = sp.empty((self.C))   # Vector of number of samples for each class
+        self.prop      = sp.empty((self.C))   # Vector of proportion
         self.mean      = sp.empty((self.C,self.d))   # Vector of means
         self.cov       = sp.empty((self.C,self.d,self.d)) # Matrix of covariance
         self.vp        = sp.empty((self.C,samples.shape[1]))   # array of eigenvalues
@@ -631,7 +633,6 @@ class GMMFeaturesSelection(GMM):
 
             elif criterion == 'divKL':
                 criterionVal =  compute_divKL('forward',variables,self,idx)
-
 
             # Select the variable that provides the highest criterion value
             bestVar = sp.argmax(criterionVal)                # get the indice of the maximum of criterion values
