@@ -13,6 +13,31 @@ from sklearn.metrics import confusion_matrix
 
 ## Utilitary functions
 
+def select_interval(criterionVal,meanVal=-0.1):
+    """
+        Function that uses Lindley process to select a continuous interval
+        Inputs:
+            criterionVal: criterion function values for each band
+        Output:
+            interval: indexes of bands included in the selected interval
+    """
+    # Set mean to meanVal
+    data = criterionVal.ravel() - sp.mean(criterionVal.ravel()) - meanVal
+
+    # Compute Lindley process
+    lindley = sp.empty(len(data))
+    lindley[0] = max(0,data[0])
+    for i in xrange(1,len(data)):
+        lindley = max(0,lindley[i-1]+data[i])
+
+    # Select interval
+    stop = sp.argmax(lindley)
+    i = 0
+    while ():
+        i
+
+    return
+
 def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx):
     """
         Function that computes the accuracy of the model_cv using the variables : idx +/- one of variables
@@ -708,112 +733,112 @@ class GMMFeaturesSelection(GMM):
         ## Return the final value
         return idx,criterionBestVal
 
-    def floating_forward_selection(self, samples, labels, criterion, varNb, kfold, model_pre_cv, ncpus):
-        """
-            Function that selects the most discriminative variables according to a floating forward search
-            Inputs:
-                samples, labels:  the training samples and their labels
-                criterion:        the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).
-                varNb:           maximum number of extracted variables.
-                kfold:            k-folds for the cross-validation.
-                model_pre_cv:     GMM models for each CV.
-                ncpus:            number of cpus to use for parallelization.
-            Outputs:
-                idx:              the selected variables
-                criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
-        """
-        # Get some information from the variables
-        n = samples.shape[0]      # Number of samples
-        if ncpus is None:
-            ncpus=mp.cpu_count() # Get the number of core
+    # def floating_forward_selection(self, samples, labels, criterion, varNb, kfold, model_pre_cv, ncpus):
+    #     """
+    #         Function that selects the most discriminative variables according to a floating forward search
+    #         Inputs:
+    #             samples, labels:  the training samples and their labels
+    #             criterion:        the criterion function to use for selection (accuracy, kappa, F1Mean, JM, divKL).
+    #             varNb:           maximum number of extracted variables.
+    #             kfold:            k-folds for the cross-validation.
+    #             model_pre_cv:     GMM models for each CV.
+    #             ncpus:            number of cpus to use for parallelization.
+    #         Outputs:
+    #             idx:              the selected variables
+    #             criterionBestVal: the criterion value estimated for each idx by nfold-fold cv
+    #     """
+    #     # Get some information from the variables
+    #     n = samples.shape[0]      # Number of samples
+    #     if ncpus is None:
+    #         ncpus=mp.cpu_count() # Get the number of core
 
-        # Initialization
-        nbSelectFeat     = 0                       # Initialization of the counter
-        variables        = sp.arange(self.d)       # At step zero: d variables available
-        idx              = []                      # and no selected variable
-        criterionBestVal = []                      # list of the evolution the OA estimation
-        idxBestSets      = []
+    #     # Initialization
+    #     nbSelectFeat     = 0                       # Initialization of the counter
+    #     variables        = sp.arange(self.d)       # At step zero: d variables available
+    #     idx              = []                      # and no selected variable
+    #     criterionBestVal = []                      # list of the evolution the OA estimation
+    #     idxBestSets      = []
 
-        if varNb==0.2:
-            varNb = sp.floor(self.d*varNb) # Select at max varNb % of the original number of variables
+    #     if varNb==0.2:
+    #         varNb = sp.floor(self.d*varNb) # Select at max varNb % of the original number of variables
 
-        # Start the forward search
-        while(nbSelectFeat<varNb) and (variables.size!=0):
+    #     # Start the forward search
+    #     while(nbSelectFeat<varNb) and (variables.size!=0):
 
-            # Compute criterion function
-            if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
-                # Parallelize cv
-                pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
-                pool.close()
-                pool.join()
+    #         # Compute criterion function
+    #         if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
+    #             # Parallelize cv
+    #             pool = mp.Pool(processes=ncpus)
+    #             processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
+    #             pool.close()
+    #             pool.join()
 
-                # Compute mean criterion value over each processus
-                criterionVal = sp.zeros(variables.size)
-                for p in processes:
-                    criterionVal += p.get()
-                criterionVal /= len(kfold)
-                del processes,pool
+    #             # Compute mean criterion value over each processus
+    #             criterionVal = sp.zeros(variables.size)
+    #             for p in processes:
+    #                 criterionVal += p.get()
+    #             criterionVal /= len(kfold)
+    #             del processes,pool
 
-            elif criterion == 'JM':
-                criterionVal = compute_JM('forward',variables,self,idx)
+    #         elif criterion == 'JM':
+    #             criterionVal = compute_JM('forward',variables,self,idx)
 
-            elif criterion == 'divKL':
-                criterionVal = compute_divKL('forward',variables,self,idx)
-
-
-            # Select the variable that provides the highest criterion
-            nbSelectFeat += 1
-            bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
-            if nbSelectFeat <= len(criterionBestVal) and criterionVal[bestVar] < criterionBestVal[nbSelectFeat-1]:
-                idx       = idxBestSets[nbSelectFeat-1][0]
-                variables = idxBestSets[nbSelectFeat-1][1]
-            else:
-
-                idx.append(variables[bestVar])
-                variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
-                if nbSelectFeat > len(criterionBestVal):
-                    criterionBestVal.append(criterionVal[bestVar])   # save criterion value
-                    idxBestSets.append((list(idx),variables))
-                else:
-                    criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
-                    idxBestSets[nbSelectFeat-1] = (list(idx),variables)
-
-                flagBacktrack = True
-                while flagBacktrack and nbSelectFeat > 2:
-
-                    # Compute criterion function
-                    if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
-                        # Parallelize cv
-                        pool = mp.Pool(processes=ncpus)
-                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
-                        pool.close()
-                        pool.join()
-
-                        # Compute mean criterion value over each processus
-                        criterionVal = sp.zeros(len(idx))
-                        for p in processes:
-                            criterionVal += p.get()
-                        criterionVal /= len(kfold)
-                        del processes,pool
-
-                    elif criterion == 'JM':
-                        criterionVal = compute_JM('backward',sp.array(idx),self,idx)
-
-                    elif criterion == 'divKL':
-                        criterionVal = compute_divKL('backward',sp.array(idx),self,idx)
+    #         elif criterion == 'divKL':
+    #             criterionVal = compute_divKL('forward',variables,self,idx)
 
 
-                    bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
-                    if criterionVal[bestVar] > criterionBestVal[nbSelectFeat-2]:
-                        nbSelectFeat -= 1
-                        variables = sp.append(variables,idx[bestVar])
-                        del idx[bestVar]
+    #         # Select the variable that provides the highest criterion
+    #         nbSelectFeat += 1
+    #         bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
+    #         if nbSelectFeat <= len(criterionBestVal) and criterionVal[bestVar] < criterionBestVal[nbSelectFeat-1]:
+    #             idx       = idxBestSets[nbSelectFeat-1][0]
+    #             variables = idxBestSets[nbSelectFeat-1][1]
+    #         else:
 
-                        criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
-                        idxBestSets[nbSelectFeat-1] = (list(idx),variables)
-                    else:
-                        flagBacktrack = False
+    #             idx.append(variables[bestVar])
+    #             variables = sp.delete(variables,bestVar)  # remove the selected variables from the initial set
+    #             if nbSelectFeat > len(criterionBestVal):
+    #                 criterionBestVal.append(criterionVal[bestVar])   # save criterion value
+    #                 idxBestSets.append((list(idx),variables))
+    #             else:
+    #                 criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
+    #                 idxBestSets[nbSelectFeat-1] = (list(idx),variables)
 
-        ## Return the final value
-        return idx,criterionBestVal,[i[0] for i in idxBestSets]
+    #             flagBacktrack = True
+    #             while flagBacktrack and nbSelectFeat > 2:
+
+    #                 # Compute criterion function
+    #                 if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
+    #                     # Parallelize cv
+    #                     pool = mp.Pool(processes=ncpus)
+    #                     processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
+    #                     pool.close()
+    #                     pool.join()
+
+    #                     # Compute mean criterion value over each processus
+    #                     criterionVal = sp.zeros(len(idx))
+    #                     for p in processes:
+    #                         criterionVal += p.get()
+    #                     criterionVal /= len(kfold)
+    #                     del processes,pool
+
+    #                 elif criterion == 'JM':
+    #                     criterionVal = compute_JM('backward',sp.array(idx),self,idx)
+
+    #                 elif criterion == 'divKL':
+    #                     criterionVal = compute_divKL('backward',sp.array(idx),self,idx)
+
+
+    #                 bestVar = sp.argmax(criterionVal) # get the indice of the maximum of criterion values
+    #                 if criterionVal[bestVar] > criterionBestVal[nbSelectFeat-2]:
+    #                     nbSelectFeat -= 1
+    #                     variables = sp.append(variables,idx[bestVar])
+    #                     del idx[bestVar]
+
+    #                     criterionBestVal[nbSelectFeat-1] = criterionVal[bestVar]   # save criterion value
+    #                     idxBestSets[nbSelectFeat-1] = (list(idx),variables)
+    #                 else:
+    #                     flagBacktrack = False
+
+    #     ## Return the final value
+    #     return idx,criterionBestVal,[i[0] for i in idxBestSets]
