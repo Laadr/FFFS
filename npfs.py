@@ -10,10 +10,11 @@ from scipy import linalg
 import multiprocessing as mp
 import sklearn.cross_validation as cv
 from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 
 ## Utilitary functions
 
-def select_interval(criterionVal,meanVal=-0.1):
+def select_interval(criterionVal,variablesOrigin,meanVal=-0.04):
     """
         Function that uses Lindley process to select a continuous interval
         Inputs:
@@ -22,21 +23,29 @@ def select_interval(criterionVal,meanVal=-0.1):
             start,stop: boundaries of the selected interval
     """
     # Set mean to meanVal
-    data = criterionVal.ravel() - sp.mean(criterionVal.ravel()) - meanVal
+    data = criterionVal.ravel() - sp.mean(criterionVal.ravel()) + meanVal
+    # plt.scatter(range(len(data)), data, marker='o')
+    # plt.show()
 
     # Compute Lindley process
     lindley = sp.empty(len(data))
     lindley[0] = max(0,data[0])
     for i in xrange(1,len(data)):
-        lindley = max(0,lindley[i-1]+data[i])
+        if variablesOrigin[i]!=variablesOrigin[i-1]+1:
+            lindley[i] = max(0,data[i])
+        else:
+            lindley[i] = max(0,lindley[i-1]+data[i])
+
+    # plt.scatter(range(len(data)), lindley, marker='o')
+    # plt.show()
 
     # Select interval
     stop = sp.argmax(lindley)
     start = stop
-    while (start!=0)and(lindley[start-1]!=0):
+    while (start!=0)and(lindley[start-1]!=0)and(variablesOrigin[start]==variablesOrigin[start-1]+1):
         start-=1
 
-    return start,stop
+    return start,stop,sp.mean(criterionVal[start:stop+1])
 
 def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx):
     """
@@ -418,7 +427,7 @@ class GMMFeaturesSelection(GMM):
         super(GMMFeaturesSelection, self).__init__(d,C)
         self.idxDecomp = [] # store index of features of last decomposition
 
-    def predict_gmm(self, testSamples, featIdx=None, tau=0):
+    def predict_gmm(self, testSamples, featIdx=[], tau=0):
         """
             Function that predict the label for testSamples using the learned model
             Inputs:
@@ -433,28 +442,45 @@ class GMMFeaturesSelection(GMM):
         nbTestSpl = testSamples.shape[0] # Number of testing samples
 
         # Initialization
-        scores = sp.empty((nbTestSpl,self.C))
+        scores         = sp.empty((nbTestSpl,self.C))
+        newcov         = sp.empty((self.C,len(featIdx),len(featIdx)))
+        newmean        = sp.empty((self.C,len(featIdx)))
+        newtestSamples = sp.empty((nbTestSpl,len(featIdx)))
 
         # If not specified, predict with all features
-        if featIdx is None:
-            idx = range(testSamples.shape[1])
+        if not featIdx:
+            self.vp    = sp.empty((self.C,self.d))   # array of eigenvalues
+            self.Q     = sp.empty((self.C,self.d,self.d)) # array of eigenvectors
         else:
-            idx = list(featIdx)
+            # Allocate storage for decomposition in eigenvalues
+            self.vp    = sp.empty((self.C,len(featIdx)))   # array of eigenvalues
+            self.Q     = sp.empty((self.C,len(featIdx),len(featIdx))) # array of eigenvectors
 
-        # Allocate storage for decomposition in eigenvalues
-        if self.idxDecomp != idx:
-            self.vp    = sp.empty((self.C,len(idx)))   # array of eigenvalues
-            self.Q     = sp.empty((self.C,len(idx),len(idx))) # array of eigenvectors
-            flagDecomp = True
-        else:
-            flagDecomp = False
+            for k,var in enumerate(featIdx):
+                start = var[0]
+                stop  = var[-1]
+
+                newmean[:,k]=sp.mean(self.mean[:,start:stop+1],axis=1)
+
+                newcov[:,k,k] = sp.mean( sp.mean(self.cov[:,start:stop+1,start:stop+1],axis=1), axis=1)
+
+                for k2,var2 in enumerate(featIdx):
+                    start2 = var2[0]
+                    stop2  = var2[-1]
+                    if k2>k:
+                        newcov[:,k,k2] = sp.mean( sp.mean(self.cov[:,start:stop+1,start2:stop2+1],axis=1), axis=1)
+                        newcov[:,k2,k] = newcov[:,k,k2]
+
+                newtestSamples[:,k] = sp.mean(testSamples[:,start:stop+1],axis=1)
 
         # Start the prediction for each class
         for c in xrange(self.C):
-            testSamples_c = testSamples[:,idx] - self.mean[c,idx]
-
-            if flagDecomp:
-                self.vp[c,:],self.Q[c,:,:],_ = self.decomposition(self.cov[c,idx,:][:,idx])
+            if not featIdx:
+                testSamples_c = testSamples - self.mean[c,:]
+                self.vp[c,:],self.Q[c,:,:],_ = self.decomposition(self.cov[c,:,:])
+            else:
+                testSamples_c = newtestSamples - newmean[c,:]
+                self.vp[c,:],self.Q[c,:,:],_ = self.decomposition(newcov[c,:,:])
 
             regvp = self.vp[c,:] + tau
 
@@ -465,7 +491,6 @@ class GMMFeaturesSelection(GMM):
             scores[:,c] = sp.sum( sp.square( sp.dot( (self.Q[c,:,:][:,:]/sp.sqrt(regvp)).T, testSamples_c.T ) ), axis=0 ) + cst
 
             del testSamples_c
-        self.idxDecomp = idx
 
         # Assign the label to the minimum value of scores
         predLabels = sp.argmin(scores,1)+1
@@ -637,6 +662,11 @@ class GMMFeaturesSelection(GMM):
         if varNb==0.2:
             varNb = sp.floor(self.d*varNb) # Select at max varNb % of the original number of variables
 
+        # Save model
+        fullD    = self.d
+        fullMean = self.mean
+        fullCov  = self.cov
+
         # Start the forward search
         while(nbSelectFeat<varNb) and (variables.size!=0):
 
@@ -662,19 +692,20 @@ class GMMFeaturesSelection(GMM):
                 criterionVal =  compute_divKL('forward',variables,self,idx)
 
             # Select the variable that provides the highest criterion value
-            startInt,stopInt = select_interval(criterionVal)
-            criterionBestVal.append(criterionVal[bestVar])   # save criterion value
+            startInt,stopInt,meanCriterion = select_interval(criterionVal,variablesOrigin,meanVal=-1.25*sp.std(criterionVal.ravel()))
+            criterionBestVal.append(meanCriterion)   # save criterion value
 
             # Agregate interval
             idxOrigin.append(variablesOrigin[startInt:stopInt+1])           # add the selected variables to the pool
-            variablesOrigin = sp.delete(variablesOrigin,[startInt:stopInt+1]) # remove the selected variables from the initial set
+            variablesOrigin = sp.delete(variablesOrigin,range(startInt,stopInt+1)) # remove the selected variables from the initial set
+
             if stopInt!=startInt:
                 self.d = self.d - (stopInt-startInt)
 
                 tmp = self.mean
                 self.mean = sp.empty((self.C,self.d))
                 self.mean[:,:startInt]=tmp[:,:startInt]
-                self.mean[:,startInt+1:]=tmp[:,stopInt+1]
+                self.mean[:,startInt+1:]=tmp[:,stopInt+1:]
                 self.mean[:,startInt]=sp.mean(tmp[:,startInt:stopInt+1],axis=1)
                 del tmp
 
@@ -682,20 +713,63 @@ class GMMFeaturesSelection(GMM):
                 self.cov = sp.empty((self.C,self.d,self.d))
                 self.cov[:,:startInt,:startInt] = tmp[:,:startInt,:startInt]
                 self.cov[:,:startInt,startInt+1:] = tmp[:,:startInt,stopInt+1:]
-                self.cov[:,startInt+1:,:startInt] = tmp[:,stopInt+1:,startInt:]
+                self.cov[:,startInt+1:,:startInt] = tmp[:,stopInt+1:,:startInt]
                 self.cov[:,startInt+1:,startInt+1:] = tmp[:,stopInt+1:,stopInt+1:]
-                self.cov[:,startInt+1,startInt+1] = sp.mean( sp.mean(tmp[:,startInt:stopInt+1,startInt:stopInt+1],axis=1), axis=1)
+                self.cov[:,startInt,startInt] = sp.mean( sp.mean(tmp[:,startInt:stopInt+1,startInt:stopInt+1],axis=1), axis=1)
 
-                agreg = sp.mean(self.cov[:,startInt:stopInt+1,:], axis=1)
-                self.cov[:,startInt+1,:startInt] = agreg[:startInt]
-                self.cov[:,startInt+1,startInt+1:] = agreg[stopInt+1:]
-                self.cov[:,startInt+1,:] = self.cov[:,:,startInt+1]
+                agreg = sp.mean(tmp[:,startInt:stopInt+1,:], axis=1)
+                self.cov[:,startInt,:startInt] = agreg[:,:startInt]
+                self.cov[:,startInt,startInt+1:] = agreg[:,stopInt+1:]
+                self.cov[:,startInt,:] = self.cov[:,:,startInt]
                 del tmp, agreg
+
+            newvar = variables[startInt]
+            idx.append(newvar)           # add the selected variables to the pool
+            variables = sp.delete(variables,range(startInt,stopInt+1)) # remove the selected variables from the initial set
+            for ind in sp.where(idx>newvar)[0]:
+                idx[ind] -= (stopInt - startInt)
+            for ind in sp.where(variables>newvar)[0]:
+                variables[ind] -= (stopInt - startInt)
+
+            # # Agregate interval
+            # idxOrigin.append(variablesOrigin[startInt:stopInt+1])           # add the selected variables to the pool
+
+            # if stopInt!=startInt:
+            #     self.d = self.d + 1
+
+            #     tmp = self.mean
+            #     self.mean = sp.empty((self.C,self.d))
+            #     self.mean[:,:-1]=tmp
+            #     self.mean[:,-1]=sp.mean(tmp[:,startInt:stopInt+1],axis=1)
+            #     del tmp
+
+            #     tmp = self.cov
+            #     self.cov = sp.empty((self.C,self.d,self.d))
+            #     self.cov[:,:-1,:-1] = tmp
+            #     self.cov[:,-1,-1] = sp.mean( sp.mean(tmp[:,startInt:stopInt+1,startInt:stopInt+1],axis=1), axis=1)
+
+            #     agreg = sp.mean(tmp[:,startInt:stopInt+1,:], axis=1)
+            #     self.cov[:,-1,:-1] = agreg
+            #     self.cov[:,-1,:] = self.cov[:,:,-1]
+            #     del tmp, agreg
+
+            #     newvar = self.d - 1
+            #     idx.append(newvar)           # add the selected variables to the pool
+            #     variables = sp.delete(variables,range(startInt,stopInt+1)) # remove the selected variables from the initial set
+            # else:
+            #     idx.append(startInt)           # add the selected variables to the pool
+            #     variables = sp.delete(variables,range(startInt,stopInt+1)) # remove the selected variables from the initial set
+            #     variablesOrigin = sp.delete(variablesOrigin,range(startInt,stopInt+1)) # remove the selected variables from the initial set
 
             nbSelectFeat += 1
 
-        ## Return the final value
-        return idx,criterionBestVal
+        # Reset original model
+        self.d    = fullD
+        self.mean = fullMean
+        self.cov  = fullCov
+
+        # Return the final value
+        return idxOrigin,criterionBestVal
 
     def backward_selection(self, samples, labels, criterion, varNb, kfold, model_pre_cv, ncpus):
         """
