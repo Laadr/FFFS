@@ -529,6 +529,8 @@ class GMMFeaturesSelection(GMM):
 
             Outputs:
                 idx:              the selected variables
+                criterionEvolution: values of the criterion function at each selection step
+                bestSets: all the sets of selected variables (usefull only with SFFS)
         """
         # Get some information from the variables
         n = samples.shape[0] # Number of samples
