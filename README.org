@@ -11,12 +11,12 @@
 
 * Requirements
   Scipy needs to be installed.
-  
+
   Scikit-learn: >=0.17
-  
+
   For a fast processing, a good linear algebra library is required too. [[https://github.com/xianyi/OpenBLAS][Openblas]] is a good option.
 
 * Usage
-  See example of use in file ~test.py~, ~test2.py~. (Database is not provided for ~runTest.py~ and ~printTest.py)
+  See example of use in file ~test.py~ on artificial data, ~runTestFull.py~ on real data when using GMM classifier and ~runTestSelectionGMM.py~ on real data when using GMM classifier. (Database is not provided for the last two examples)
 
-  Data labels needs to be integers from 1 to classNumbers.
+  Warning: Reference labels need to be integers from 1 to classNumbers.
