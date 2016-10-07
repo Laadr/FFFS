@@ -234,7 +234,7 @@ def compute_divKL(direction, variables, model, idx):
 
 class ConfusionMatrix(object):
     def __init__(self):
-        self.confusion_matrix = None
+        self.confusionMatrix = None
         self.n = None
 
     def compute_confusion_matrix(self,yp,yr):
