@@ -8,7 +8,7 @@ Created on 6 april 2016
 import scipy as sp
 from scipy import linalg
 import multiprocessing as mp
-import sklearn.cross_validation as cv
+from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import confusion_matrix
 
 ## Utilitary functions
@@ -541,11 +541,11 @@ class GMMFeaturesSelection(GMM):
         if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
 
             # Creation of folds
-            kfold = cv.StratifiedKFold(labels.ravel(),n_folds=nfold,shuffle=True,random_state=random_state) # kfold is an iterator
+            kfold = StratifiedKFold(n_splits=nfold,shuffle=True,random_state=random_state) # kfold.split() is a generator
 
             ## Pre-update the models
             model_pre_cv = [GMMFeaturesSelection(d=self.d, C=self.C) for i in xrange(nfold)]
-            for k, (trainInd,testInd) in enumerate(kfold):
+            for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel())):
 
                 # Get training data for this cv round
                 testSamples,testLabels = samples[testInd,:], labels[testInd]
@@ -619,7 +619,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel()))]
                 pool.close()
                 pool.join()
 
@@ -627,7 +627,7 @@ class GMMFeaturesSelection(GMM):
                 criterionVal = sp.zeros(variables.size)
                 for p in processes:
                     criterionVal += p.get()
-                criterionVal /= len(kfold)
+                criterionVal /= len(model_pre_cv)
                 del processes,pool
 
             elif criterion == 'JM':
@@ -680,7 +680,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,idx,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel()))]
                 pool.close()
                 pool.join()
 
@@ -688,7 +688,7 @@ class GMMFeaturesSelection(GMM):
                 criterionVal = sp.zeros(idx.size)
                 for p in processes:
                     criterionVal += p.get()
-                criterionVal /= len(kfold)
+                criterionVal /= len(model_pre_cv)
                 del processes,pool
 
             elif criterion == 'JM':
@@ -746,7 +746,7 @@ class GMMFeaturesSelection(GMM):
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
                 pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel()))]
                 pool.close()
                 pool.join()
 
@@ -754,7 +754,7 @@ class GMMFeaturesSelection(GMM):
                 criterionVal = sp.zeros(variables.size)
                 for p in processes:
                     criterionVal += p.get()
-                criterionVal /= len(kfold)
+                criterionVal /= len(model_pre_cv)
                 del processes,pool
 
             elif criterion == 'JM':
@@ -788,7 +788,7 @@ class GMMFeaturesSelection(GMM):
                     if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                         # Parallelize cv
                         pool = mp.Pool(processes=ncpus)
-                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold)]
+                        processes =  [pool.apply_async(compute_metric_gmm, args=('backward',criterion,sp.array(idx),model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel()))]
                         pool.close()
                         pool.join()
 
@@ -796,7 +796,7 @@ class GMMFeaturesSelection(GMM):
                         criterionVal = sp.zeros(len(idx))
                         for p in processes:
                             criterionVal += p.get()
-                        criterionVal /= len(kfold)
+                        criterionVal /= len(model_pre_cv)
                         del processes,pool
 
                     elif criterion == 'JM':

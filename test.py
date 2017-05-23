@@ -4,12 +4,12 @@ import scipy as sp
 import time
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_classification
-from sklearn.cross_validation import train_test_split
-import HSIC_selection as hsic
+from sklearn.model_selection import train_test_split
+# import HSIC_selection as hsic
 
 
-n           = 400 # Number of samples
-d           = 30 # Number of dimension
+n           = 4000 # Number of samples
+d           = 100 # Number of dimension
 d_info      = 4   # Number of informatives features
 d_redundant = 0   # Number of redundant features
 
@@ -43,7 +43,7 @@ print "Accuracy without selection: ", float(t.size)/ytest.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA,_ = model.selection('SFFS',xtrain, ytrain,criterion='divKL', varNb=4,nfold=5)
+idx,selectionOA,_ = model.selection('SFFS',xtrain, ytrain,criterion='kappa', varNb=4,nfold=5)
 # idx.sort()
 yp     = model.predict_gmm(xtest,featIdx=idx)[0]
 j      = sp.where(yp.ravel()==ytest.ravel())[0]
