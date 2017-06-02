@@ -524,7 +524,7 @@ class GMMFeaturesSelection(GMM):
                 cst = logdet_update - self.logprop[c] # Pre compute the constant term
 
                 # temp = sp.dot(testSamples_c,invCov[c,:,:][:,:]) # Here -> symmetric dot product
-                temp = dgemm(1.,Qs[c,:,:],testSamples_c,trans_b=True)
+                temp = dgemm(1.,Qs[c,:,:].T,testSamples_c,trans_b=True)
                 scores[:,c] = sp.sum(temp**2,axis=0) + cst_feat + cst # The first term can be store for each selection step
 
                 del temp
