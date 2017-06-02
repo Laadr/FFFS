@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 # import HSIC_selection as hsic
 
 
-n           = 4000 # Number of samples
+n           = 400 # Number of samples
 d           = 100 # Number of dimension
 d_info      = 4   # Number of informatives features
 d_redundant = 0   # Number of redundant features
@@ -26,8 +26,6 @@ x[:, :]   = x[:, indices]
 var       = sp.sort( [ sp.where(indices==k)[0][0] for k in xrange(d_info + d_redundant)] )
 
 # Separate in train/test (80%/20%)
-# xtrain,xtest = x[:sp.floor(x.shape[0]*0.8),:],x[sp.floor(x.shape[0]*0.8):,:]
-# ytrain,ytest = y[:sp.floor(x.shape[0]*0.8)],y[sp.floor(x.shape[0]*0.8):]
 xtrain, xtest, ytrain, ytest = train_test_split(x, y, test_size=0.20, random_state=1, stratify=y)
 del x,y
 
@@ -43,7 +41,7 @@ print "Accuracy without selection: ", float(t.size)/ytest.size
 
 # 5-CV
 ts     = time.time()
-idx,selectionOA,_ = model.selection('SFFS',xtrain, ytrain,criterion='kappa', varNb=4,nfold=5)
+idx,selectionOA,_ = model.selection('forward',xtrain, ytrain,criterion='kappa', varNb=4,nfold=5)
 # idx.sort()
 yp     = model.predict_gmm(xtest,featIdx=idx)[0]
 j      = sp.where(yp.ravel()==ytest.ravel())[0]
@@ -52,5 +50,5 @@ print "\nResults\n"
 print "Processing time: ", time.time()-ts
 print "Selected features: ", idx
 print "Evolution of accuracy during selection: ", selectionOA
-print "Final accuracy: ", OA
+print "\n Final accuracy: ", OA
 print "Pertinent features (by construction): ", var

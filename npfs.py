@@ -10,8 +10,15 @@ from scipy import linalg
 import multiprocessing as mp
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import confusion_matrix
+from scipy.linalg.blas import dsyrk,dgemm
 
 ## Utilitary functions
+def compute_cov(xj,mean,ni):
+    """
+    """
+    Xc = xj-mean
+    cov = dgemm(1.0/(ni-1),Xc,Xc,trans_a=True,trans_b=False) # dsyrk could have been used -> but then triangular matrix must be handled ...
+    return cov
 
 def compute_metric_gmm(direction, criterion, variables, model_cv, samples, labels, idx):
     """
@@ -28,25 +35,32 @@ def compute_metric_gmm(direction, criterion, variables, model_cv, samples, label
 
         Used in GMM.forward_selection(), GMM.backward_selection()
     """
+    # Initialization
     metric     = sp.zeros(variables.size)
     confMatrix = ConfusionMatrix()
-
+    scores = sp.empty((samples.shape[0],model_cv.C))
+    
     # Compute inv of covariance matrix
     if len(idx)==0:
         invCov = None
         logdet = None
+        Qs     = None
     else:
         invCov     = sp.empty((model_cv.C,len(idx),len(idx)))
         logdet     = sp.empty((model_cv.C))
+        Qs         = sp.empty((model_cv.C,len(idx),len(idx)))
 
-        for c in xrange(model_cv.C):
+        for c in xrange(model_cv.C): # Here -> store Qs and score
             vp,Q,rcond    = model_cv.decomposition(model_cv.cov[c,idx,:][:,idx])
-            invCov[c,:,:] = sp.dot(Q,(Q/vp).T)
-            logdet[c]     = sp.sum(sp.log(vp))
+            # invCov[c,:,:] = sp.dot(Q,(Q/vp).T)
+            Qs[c,:,:] = Q/sp.sqrt(vp)
+            invCov[c,:,:] = dsyrk(1.,Qs[c,:,:],trans=False) # invCovs is now diagonal sup 
+            logdet[c]     = sp.sum(sp.log(vp))     
+
 
     for i,var in enumerate(variables):
-        predLabels = model_cv.predict_gmm_update(direction,samples,invCov,logdet,(i,var),featIdx=idx)[0]
-
+        predLabels = model_cv.predict_gmm_update(direction,samples,invCov,logdet,(i,var),Qs,featIdx=idx)[0]
+    
         confMatrix.compute_confusion_matrix(predLabels,labels)
         if criterion=='accuracy':
             metric[i] = confMatrix.get_OA()
@@ -344,9 +358,11 @@ class GMM(object):
             j = sp.where(labels==(c+1))[0]
 
             # Update GMM
+            xj = samples[j,:]
             self.nbSpl[c]   = float(j.size)
-            self.mean[c,:]  = sp.mean(samples[j,:],axis=0)
-            self.cov[c,:,:] = sp.cov(samples[j,:],rowvar=0) # implicit: with no bias
+            self.mean[c,:]  = sp.mean(xj,axis=0)
+            # self.cov[c,:,:] = sp.cov(samples[j,:],rowvar=0) # implicit: with no bias
+            self.cov[c,:,:] = compute_cov(xj,self.mean[c,:],self.nbSpl[c])
             self.vp[c,:],self.Q[c,:,:],_ = self.decomposition(self.cov[c,:,:])
 
         self.prop = self.nbSpl/samples.shape[0]
@@ -447,7 +463,7 @@ class GMMFeaturesSelection(GMM):
 
         return predLabels,scores
 
-    def predict_gmm_update(self, direction, testSamples, invCov, logdet, newFeat, featIdx):
+    def predict_gmm_update(self, direction, testSamples, invCov, logdet, newFeat, Qs,featIdx):
         """
             Function that predict the label for testSamples using the learned model (with an update method of the inverse of covariance matrix)
             Inputs:
@@ -465,10 +481,8 @@ class GMMFeaturesSelection(GMM):
 
         # Get information from the data
         nbTestSpl = testSamples.shape[0] # Number of testing samples
-
-        # Initialization
         scores = sp.empty((nbTestSpl,self.C))
-
+        
         # New set of features
         if direction=='forward':
             id_t = list(featIdx)
@@ -484,13 +498,16 @@ class GMMFeaturesSelection(GMM):
                 scores[:,c] = sp.sum(testSamples_c*testSamples_c,axis=1)/self.cov[c,id_t,id_t] + sp.log(self.cov[c,id_t,id_t]) - self.logprop[c]
             else:
                 if direction=='forward':
-                    alpha     = self.cov[c,newFeat[1],newFeat[1]] - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) )
+                    # alpha     = self.cov[c,newFeat[1],newFeat[1]] - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) ) # here -> symmetric product
+                    temp = dgemm(1.0,Qs[c,:,:],self.cov[c,newFeat[1],:][featIdx].T)
+                    alpha = self.cov[c,newFeat[1],newFeat[1]] - sp.sum(temp**2)
                     if alpha < eps:
                         alpha = eps
                     logdet_update = sp.log(alpha) + logdet[c]
 
                     row_feat                = sp.empty((len(id_t)))
-                    row_feat[:len(featIdx)] = -1/alpha * sp.dot(self.cov[c,:,newFeat[1]][featIdx],invCov[c,:,:][:,:])
+                    # row_feat[:len(featIdx)] = -1/alpha * sp.dot(self.cov[c,:,newFeat[1]][featIdx],invCov[c,:,:][:,:]) # here -> symmetric product
+                    row_feat[:len(featIdx)] = dgemm(-1/alpha,Qs[c,:,:],temp).flatten()
                     row_feat[-1]            = 1/alpha
                     cst_feat                = alpha * (sp.dot(row_feat,testSamples_c.T)**2)
                     testSamples_c           = testSamples[:,featIdx] - self.mean[c,featIdx]
@@ -506,8 +523,9 @@ class GMMFeaturesSelection(GMM):
 
                 cst = logdet_update - self.logprop[c] # Pre compute the constant term
 
-                temp = sp.dot(invCov[c,:,:][:,:], testSamples_c.T).T
-                scores[:,c] = sp.sum(testSamples_c*temp,axis=1) + cst_feat + cst
+                # temp = sp.dot(testSamples_c,invCov[c,:,:][:,:]) # Here -> symmetric dot product
+                temp = dgemm(1.,Qs[c,:,:],testSamples_c,trans_b=True)
+                scores[:,c] = sp.sum(temp**2,axis=0) + cst_feat + cst # The first term can be store for each selection step
 
                 del temp
             del testSamples_c
@@ -556,7 +574,8 @@ class GMMFeaturesSelection(GMM):
                     classInd = sp.where(testLabels==(c+1))[0]
                     nk_c     = float(classInd.size)
                     mean_k   = sp.mean(testSamples[classInd,:],axis=0)
-                    cov_k    = sp.cov(testSamples[classInd,:],rowvar=0)
+                    # cov_k    = sp.cov(testSamples[classInd,:],rowvar=0)
+                    cov_k = compute_cov(testSamples[classInd,:],mean_k,nk_c)
 
                     model_pre_cv[k].nbSpl[c]  = self.nbSpl[c] - nk_c
                     model_pre_cv[k].mean[c,:] = (self.nbSpl[c]*self.mean[c,:]-nk_c*mean_k)/(self.nbSpl[c]-nk_c)
@@ -618,17 +637,20 @@ class GMMFeaturesSelection(GMM):
             # Compute criterion function
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
-                pool = mp.Pool(processes=ncpus)
-                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel()))]
-                pool.close()
-                pool.join()
-
+                # pool = mp.Pool(processes=ncpus)
+                # processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel()))]
+                # pool.close()
+                # pool.join()
+                    
                 # Compute mean criterion value over each processus
                 criterionVal = sp.zeros(variables.size)
-                for p in processes:
-                    criterionVal += p.get()
-                criterionVal /= len(model_pre_cv)
-                del processes,pool
+                # for p in processes:
+                #     criterionVal += p.get()
+                # criterionVal /= len(model_pre_cv)
+                # del processes,pool
+
+                for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel())):
+                    criterionVal+=compute_metric_gmm('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)/len(model_pre_cv)
 
             elif criterion == 'JM':
                 criterionVal =  compute_JM('forward',variables,self,idx)
