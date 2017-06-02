@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 # import HSIC_selection as hsic
 
 
-n           = 40000 # Number of samples
+n           = 100000 # Number of samples
 d           = 100 # Number of dimension
 d_info      = 4   # Number of informatives features
 d_redundant = 0   # Number of redundant features
