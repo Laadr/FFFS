@@ -499,7 +499,7 @@ class GMMFeaturesSelection(GMM):
             else:
                 if direction=='forward':
                     # alpha     = self.cov[c,newFeat[1],newFeat[1]] - sp.dot(self.cov[c,newFeat[1],:][featIdx], sp.dot(invCov[c,:,:][:,:],self.cov[c,newFeat[1],:][featIdx].T) ) # here -> symmetric product
-                    temp = dgemm(1.0,Qs[c,:,:],self.cov[c,newFeat[1],:][featIdx].T)
+                    temp = dgemm(1.0,Qs[c,:,:].T,self.cov[c,newFeat[1],:][featIdx].T)
                     alpha = self.cov[c,newFeat[1],newFeat[1]] - sp.sum(temp**2)
                     if alpha < eps:
                         alpha = eps
@@ -637,20 +637,20 @@ class GMMFeaturesSelection(GMM):
             # Compute criterion function
             if criterion == 'accuracy' or criterion == 'F1Mean' or criterion == 'kappa':
                 # Parallelize cv
-                # pool = mp.Pool(processes=ncpus)
-                # processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel()))]
-                # pool.close()
-                # pool.join()
+                pool = mp.Pool(processes=ncpus)
+                processes =  [pool.apply_async(compute_metric_gmm, args=('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)) for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel()))]
+                pool.close()
+                pool.join()
                     
                 # Compute mean criterion value over each processus
                 criterionVal = sp.zeros(variables.size)
-                # for p in processes:
-                #     criterionVal += p.get()
-                # criterionVal /= len(model_pre_cv)
-                # del processes,pool
+                for p in processes:
+                    criterionVal += p.get()
+                criterionVal /= len(model_pre_cv)
+                del processes,pool
 
-                for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel())):
-                    criterionVal+=compute_metric_gmm('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)/len(model_pre_cv)
+                # for k, (trainInd,testInd) in enumerate(kfold.split(samples,labels.ravel())):
+                #     criterionVal+=compute_metric_gmm('forward',criterion,variables,model_pre_cv[k],samples[testInd,:],labels[testInd],idx)/len(model_pre_cv)
 
             elif criterion == 'JM':
                 criterionVal =  compute_JM('forward',variables,self,idx)
